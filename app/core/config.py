@@ -1,4 +1,5 @@
-from pydantic import BaseSettings, Field
+from pydantic import Field
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
@@ -15,6 +16,8 @@ class Settings(BaseSettings):
     )
 
     LOG_DIR: str = Field("logs", env="LOG_DIR")
+
+    NATS_URL: str = Field("nats://localhost:4222", env="NATS_URL")
 
     @property
     def DATABASE_URL(self) -> str:

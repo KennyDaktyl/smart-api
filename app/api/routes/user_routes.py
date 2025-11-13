@@ -24,8 +24,8 @@ def get_user_details(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    user_repo = UserRepository(db)
-    user = user_repo.get_with_installations_and_inverters(current_user.id)
+    user_repo = UserRepository()
+    user = user_repo.get_with_installations_and_inverters(db, current_user.id)
 
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -68,8 +68,8 @@ def get_user_installations(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    user_repo = UserRepository(db)
-    user = user_repo.get_with_installations_and_inverters(current_user.id)
+    user_repo = UserRepository()
+    user = user_repo.get_with_installations_and_inverters(db, current_user.id)
 
     if not user:
         raise HTTPException(status_code=404, detail="User not found")

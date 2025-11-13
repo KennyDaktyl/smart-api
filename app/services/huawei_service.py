@@ -1,11 +1,11 @@
 from app.adapters.huawei_adapter import HuaweiAdapter
 from app.core.db import SessionLocal
-from app.repositories.huawei_repository import HuaweiRepository
+from app.repositories.inverter_repository import InverterRepository
 
 
 class HuaweiService:
     def __init__(self):
-        self.repo = HuaweiRepository()
+        self.repo = InverterRepository()
 
     def sync_user_devices(self, user):
         adapter = HuaweiAdapter(user.huawei_username, user.huawei_password_encrypted)

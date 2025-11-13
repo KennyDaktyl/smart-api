@@ -3,11 +3,14 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    DB_HOST: str = Field(..., env="DB_HOST")
-    DB_PORT: int = Field(5432, env="DB_PORT")
-    DB_NAME: str = Field(..., env="DB_NAME")
-    DB_USER: str = Field(..., env="DB_USER")
-    DB_PASSWORD: str = Field(..., env="DB_PASSWORD")
+    POSTGRES_HOST: str = Field(..., env="POSTGRES_HOST")
+    POSTGRES_PORT: int = Field(5432, env="POSTGRES_PORT")
+    POSTGRES_NAME: str = Field(..., env="POSTGRES_NAME")
+    POSTGRES_USER: str = Field(..., env="POSTGRES_USER")
+    POSTGRES_PASSWORD: str = Field(..., env="POSTGRES_PASSWORD")
+
+    REDIS_HOST: str = Field("redis", env="REDIS_HOST")
+    REDIS_PORT: int = Field(6379, env="REDIS_PORT")
 
     FERNET_KEY: str = Field(..., env="FERNET_KEY")
     JWT_SECRET: str = Field(..., env="JWT_SECRET")
@@ -20,11 +23,21 @@ class Settings(BaseSettings):
 
     NATS_URL: str = Field("nats://localhost:4222", env="NATS_URL")
 
+    # --- WDB (Web Debugger) ---
+    WDB_SOCKET_SERVER: str | None = Field(
+        default=None, description="Host (Docker container) where wdb server runs"
+    )
+    WDB_NO_BROWSER_AUTO_OPEN: bool | None = Field(default=True)
+    WDB_WEB_PORT: int | None = Field(default=1984)
+    WDB_WEB_SERVER: str | None = Field(default="http://localhost")
+
+    GET_PRODUCTION_INTERVAL_MINUTES: int = Field(300, env="GET_PRODUCTION_INTERVAL_MINUTES")
+
     @property
     def DATABASE_URL(self) -> str:
         return (
-            f"postgresql+psycopg2://{self.DB_USER}:{self.DB_PASSWORD}"
-            f"@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
+            f"postgresql+psycopg2://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
+            f"@{self.POSTGRES_HOST}:5432/{self.POSTGRES_NAME}"
         )
 
     class Config:

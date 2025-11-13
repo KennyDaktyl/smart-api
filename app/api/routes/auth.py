@@ -1,19 +1,16 @@
+# app/api/auth_router.py
 from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.constans import UserRole
 from app.core.db import SessionLocal
-from app.core.security import (
-    create_access_token,
-    create_refresh_token,
-    decode_token,
-    get_password_hash,
-    verify_password,
-)
-from app.models.user import User
+from app.core.security import (create_access_token, create_refresh_token, decode_token,
+                               verify_password)
+from app.repositories import raspberry_repository
+from app.repositories.user_repository import UserRepository
 from app.schemas.user_schema import TokenResponse, UserCreate, UserLogin, UserResponse
+from app.services.auth_service import AuthService
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
@@ -26,48 +23,52 @@ def get_db():
         db.close()
 
 
-# REGISTER
-@router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/register", response_model=UserResponse, status_code=201)
 def register(user_in: UserCreate, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == user_in.email).first()
-    if user:
-        raise HTTPException(status_code=400, detail="User with this email already exists")
-
-    new_user = User(
-        email=user_in.email,
-        password_hash=get_password_hash(user_in.password),
-        role=UserRole.CLIENT,
-    )
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
-    return new_user
+    service = AuthService(UserRepository())
+    user = service.register(db, user_in)
+    return user
 
 
-# LOGIN
 @router.post("/login", response_model=TokenResponse)
 def login(user_in: UserLogin, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == user_in.email).first()
-    if not user or not verify_password(user_in.password, user.password_hash):
-        raise HTTPException(status_code=401, detail="Invalid email or password")
+    service = AuthService(UserRepository())
+    access, refresh = service.login(db, user_in)
+    return TokenResponse(access_token=access, refresh_token=refresh)
 
-    access_token = create_access_token({"sub": str(user.id), "role": user.role})
-    refresh_token = create_refresh_token({"sub": str(user.id)})
+
+@router.post("/raspberry", response_model=TokenResponse)
+def raspberry_auth(data: dict, db: Session = Depends(get_db)):
+    uuid = data.get("uuid")
+    secret_key = data.get("secret_key")
+
+    if not uuid or not secret_key:
+        raise HTTPException(status_code=400, detail="Missing uuid or secret_key")
+
+    raspberry = raspberry_repository.get_by_uuid(db, uuid)
+    if not raspberry:
+        raise HTTPException(status_code=404, detail="Raspberry not found")
+
+    if not verify_password(secret_key, raspberry.secret_key):
+        raise HTTPException(status_code=401, detail="Invalid Raspberry secret")
+
+    access_token = create_access_token(
+        {"sub": str(raspberry.uuid), "scope": "device"},
+        expires_delta=timedelta(days=30),
+    )
+
+    refresh_token = create_refresh_token({"sub": str(raspberry.uuid), "scope": "device"})
 
     return TokenResponse(access_token=access_token, refresh_token=refresh_token)
 
 
-# REFRESH TOKEN
 @router.post("/refresh", response_model=TokenResponse)
 def refresh_token(refresh_token: str):
     payload = decode_token(refresh_token)
     if not payload or payload.get("type") != "refresh":
         raise HTTPException(status_code=401, detail="Invalid refresh token")
 
-    new_access_token = create_access_token(
-        {"sub": payload["sub"]},
-        expires_delta=timedelta(minutes=60),
-    )
-    new_refresh_token = create_refresh_token({"sub": payload["sub"]})
+    service = AuthService(UserRepository())
+    access, refresh = service.refresh(payload)
 
-    return TokenResponse(access_token=new_access_token, refresh_token=new_refresh_token)
+    return TokenResponse(access_token=access, refresh_token=refresh)

@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timedelta, timezone
 
 from cryptography.fernet import Fernet
@@ -5,6 +6,8 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 fernet = Fernet(
@@ -16,9 +19,6 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60
 REFRESH_TOKEN_EXPIRE_DAYS = 7
 
 
-# -----------------------
-# 🔒 PASSWORD HANDLING
-# -----------------------
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     password_bytes = plain_password.encode("utf-8")
     if len(password_bytes) > 72:
@@ -35,9 +35,6 @@ def get_password_hash(password: str) -> str:
     return pwd_context.hash(password)
 
 
-# -----------------------
-# 🔑 JWT TOKENS
-# -----------------------
 def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + (
@@ -59,18 +56,15 @@ def decode_token(token: str):
 
     try:
         payload = jwt.decode(token, settings.JWT_SECRET, algorithms=[ALGORITHM])
-        print(f"✅ JWT decoded: {payload}")
+        logger.debug(f"JWT decoded successfully: {payload}")
         return payload
     except ExpiredSignatureError:
-        print("⚠️ JWT expired")
+        logger.warning("JWT token has expired")
     except JWTError as e:
-        print(f"❌ JWT decode failed: {e}")
+        logger.debug(f"JWT decode failed: {e}")
     return None
 
 
-# -----------------------
-# 🔐 HUAWEI CREDENTIALS
-# -----------------------
 def encrypt_password(password: str) -> str:
     return fernet.encrypt(password.encode()).decode()
 

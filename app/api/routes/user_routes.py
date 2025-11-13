@@ -5,7 +5,8 @@ from app.core.db import SessionLocal
 from app.core.dependencies import get_current_user
 from app.core.security import decrypt_password, encrypt_password
 from app.models.user import User
-from app.schemas.user_schema import HuaweiCredentialsUpdate, UserResponse
+from app.repositories.user_repository import UserRepository
+from app.schemas.user_schema import HuaweiCredentialsUpdate, UserInstallationsResponse, UserResponse
 
 router = APIRouter(prefix="/users", tags=["Users"])
 
@@ -16,6 +17,20 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+@router.get("/me/details", response_model=UserInstallationsResponse)
+def get_user_details(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    user_repo = UserRepository(db)
+    user = user_repo.get_with_installations_and_inverters(current_user.id)
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    return user
 
 
 @router.put("/huawei-credentials", response_model=UserResponse)
@@ -46,3 +61,17 @@ def get_huawei_credentials(
         huawei_username=user.huawei_username,
         huawei_password=decrypt_password(user.huawei_password_encrypted),
     )
+
+
+@router.get("/me/installations", response_model=UserInstallationsResponse)
+def get_user_installations(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    user_repo = UserRepository(db)
+    user = user_repo.get_with_installations_and_inverters(current_user.id)
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    return user

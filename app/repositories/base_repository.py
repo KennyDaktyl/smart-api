@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.core.db import Base
 
-ModelType = TypeVar("ModelType", bound=Base)  # noqa: F821
+ModelType = TypeVar("ModelType", bound=Base)
 
 
 class BaseRepository(Generic[ModelType]):

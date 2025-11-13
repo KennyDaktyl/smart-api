@@ -1,5 +1,6 @@
 # app/api/routes/device_routes.py
 
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -10,6 +11,7 @@ from app.core.nats_client import NatsClient
 from app.core.roles import require_role
 from app.repositories.device_repository import DeviceRepository
 from app.services.device_service import DeviceService
+from app.models.user import User
 
 router = APIRouter(prefix="/devices", tags=["Devices"])
 

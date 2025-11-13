@@ -14,6 +14,7 @@ from app.core.security import get_password_hash
 from app.repositories.raspberry_repository import RaspberryRepository
 from app.schemas.raspberry_schema import (RaspberryCreate, RaspberryCreateOut, RaspberryOut,
                                           RaspberryUpdate)
+from app.models.user import User
 
 router = APIRouter(prefix="/raspberries", tags=["Raspberry"])
 logger = logging.getLogger(__name__)

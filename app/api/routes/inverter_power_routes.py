@@ -9,6 +9,7 @@ from app.core.db import get_db
 from app.core.dependencies import get_current_user
 from app.repositories.inverter_power_record_repository import InverterPowerRepository
 from app.repositories.inverter_repository import InverterRepository
+from app.models.user import User
 
 router = APIRouter(prefix="/inverter-power", tags=["Inverter Power"])
 logger = logging.getLogger(__name__)

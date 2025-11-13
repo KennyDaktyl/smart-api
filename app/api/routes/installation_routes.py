@@ -9,6 +9,7 @@ from app.core.dependencies import get_current_user
 from app.core.roles import require_role
 from app.repositories.installation_repository import InstallationRepository
 from app.schemas.installation_schema import InstallationCreate, InstallationOut, InstallationUpdate
+from app.models.user import User
 
 router = APIRouter(prefix="/installations", tags=["Installations"])
 logger = logging.getLogger(__name__)

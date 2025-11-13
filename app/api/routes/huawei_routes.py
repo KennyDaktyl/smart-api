@@ -4,11 +4,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.adapters.adapter_cache import get_adapter_for_user
-from app.adapters.huawei_adapter import HuaweiAdapter
 from app.core.db import get_db
 from app.core.dependencies import get_current_user
-from app.core.security import decrypt_password
-from app.repositories.user_repository import UserRepository
+from app.models.user import User
 
 router = APIRouter(prefix="/huawei", tags=["Huawei API"])
 logger = logging.getLogger(__name__)

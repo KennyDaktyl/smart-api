@@ -12,6 +12,7 @@ from app.models.inverter import Inverter
 from app.repositories.installation_repository import InstallationRepository
 from app.repositories.inverter_repository import InverterRepository
 from app.schemas.inverter_schema import InverterCreate, InverterOut, InverterUpdate
+from app.models.user import User
 
 router = APIRouter(prefix="/inverters", tags=["Inverters"])
 logger = logging.getLogger(__name__)

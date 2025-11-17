@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.core.db import SessionLocal
+from app.core.db import get_db
 from app.core.dependencies import get_current_user
 from app.core.security import decrypt_password, encrypt_password
 from app.models.user import User
@@ -9,14 +9,6 @@ from app.repositories.user_repository import UserRepository
 from app.schemas.user_schema import HuaweiCredentialsUpdate, UserInstallationsResponse, UserResponse
 
 router = APIRouter(prefix="/users", tags=["Users"])
-
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 
 @router.get("/me/details", response_model=UserInstallationsResponse)

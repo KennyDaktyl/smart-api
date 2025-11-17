@@ -1,10 +1,10 @@
 # app/api/auth_router.py
 from datetime import timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.core.db import SessionLocal
+from app.core.db import get_db
 from app.core.security import (create_access_token, create_refresh_token, decode_token,
                                verify_password)
 from app.repositories import raspberry_repository
@@ -13,14 +13,6 @@ from app.schemas.user_schema import TokenResponse, UserCreate, UserLogin, UserRe
 from app.services.auth_service import AuthService
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
-
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 
 @router.post("/register", response_model=UserResponse, status_code=201)

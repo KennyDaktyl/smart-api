@@ -2,15 +2,15 @@ services:
   backend:
     build: .
     container_name: smart_energy_backend
-    # command: >
-    #   bash -c "
-    #     echo 'Checking database connectivity...';
-    #     alembic revision --autogenerate -m 'auto migration' || true;
-    #     echo 'Running migrations...';
-    #     alembic upgrade head;
-    #     echo 'Migrations complete. Starting server...';
-    #     uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-    #   "
+    command: >
+      bash -c "
+        echo 'Checking database connectivity...';
+        alembic revision --autogenerate -m 'auto migration' || true;
+        echo 'Running migrations...';
+        alembic upgrade head;
+        echo 'Migrations complete. Starting server...';
+        uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+      "
     volumes:
       - .:/app
     ports:

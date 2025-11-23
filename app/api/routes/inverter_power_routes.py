@@ -44,12 +44,18 @@ def get_latest_inverter_power(
     record = repo.get_latest_for_inverter(inverter_id)
 
     if not record:
-        raise HTTPException(status_code=404, detail="No power data found for this inverter")
-
+            active_power = None
+            timestamp = None
+            message = "No power data available yet"
+    else:
+        active_power = float(record.active_power)
+        timestamp = record.timestamp
+        message = "Latest inverter power data retrieved successfully"
+        
     return {
         "inverter_id": inverter.id,
         "serial_number": inverter.serial_number,
-        "active_power": float(record.active_power),
-        "timestamp": record.timestamp,
-        "message": "Latest inverter power data retrieved successfully",
+        "active_power": active_power,
+        "timestamp": timestamp,
+        "message": message
     }

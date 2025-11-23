@@ -83,14 +83,10 @@ def create_raspberry(
         "uuid": raspberry.uuid,
         "name": raspberry.name,
         "description": raspberry.description,
-        "firmware_version": raspberry.firmware_version,
-        "system_info": raspberry.system_info,
+        "software_version": raspberry.software_version,
         "max_devices": raspberry.max_devices,
-        "gpio_pins": raspberry.gpio_pins,
         "user_id": raspberry.user_id,
         "inverter_id": raspberry.inverter_id,
-        "is_online": raspberry.is_online,
-        "last_seen": raspberry.last_seen,
         "secret_plain": secret_plain,
     }
 

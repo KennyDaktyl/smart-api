@@ -19,7 +19,7 @@ class Device(Base):
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
     raspberry_id = Column(Integer, ForeignKey("raspberries.id", ondelete="CASCADE"))
 
-    gpio_pin = Column(Integer, nullable=False)
+    device_number = Column(Integer, nullable=False)
     rated_power_w = Column(Numeric, nullable=True)
 
     # 🔧 Enum trybu pracy

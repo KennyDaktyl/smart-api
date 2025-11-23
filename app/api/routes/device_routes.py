@@ -36,15 +36,15 @@ def get_device(
     return device_service.get_device(db, device_id, current_user)
 
 
-@router.post("/")
-def create_device(
+@router.post("")
+async def create_device(
     payload: DeviceCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     data = payload.model_dump()
     data["user_id"] = current_user.id
-    return device_service.create_device(db, data)
+    return await device_service.create_device(db, data)
 
 
 @router.put("/{device_id}")

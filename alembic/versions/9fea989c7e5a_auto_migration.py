@@ -1,8 +1,8 @@
 """auto migration
 
-Revision ID: 1b44c4f5f436
+Revision ID: 9fea989c7e5a
 Revises: 
-Create Date: 2025-11-16 16:16:52.405756
+Create Date: 2025-11-23 08:44:28.052418
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '1b44c4f5f436'
+revision: str = '9fea989c7e5a'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -76,14 +76,10 @@ def upgrade() -> None:
     sa.Column('secret_key', sa.String(), nullable=False),
     sa.Column('name', sa.String(), nullable=False),
     sa.Column('description', sa.String(), nullable=True),
-    sa.Column('firmware_version', sa.String(), nullable=True),
-    sa.Column('system_info', sa.JSON(), nullable=True),
+    sa.Column('software_version', sa.String(), nullable=True),
     sa.Column('max_devices', sa.Integer(), nullable=True),
-    sa.Column('gpio_pins', sa.JSON(), nullable=True),
     sa.Column('user_id', sa.Integer(), nullable=True),
     sa.Column('inverter_id', sa.Integer(), nullable=True),
-    sa.Column('is_online', sa.Boolean(), nullable=True),
-    sa.Column('last_seen', sa.DateTime(timezone=True), nullable=True),
     sa.ForeignKeyConstraint(['inverter_id'], ['inverters.id'], ondelete='SET NULL'),
     sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='SET NULL'),
     sa.PrimaryKeyConstraint('id')

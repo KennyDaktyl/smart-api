@@ -9,7 +9,7 @@ from app.constans.device_mode import DeviceMode
 
 class DeviceBase(BaseModel):
     name: str = Field(..., description="Nazwa urządzenia")
-    gpio_pin: int = Field(..., description="Numer pinu GPIO")
+    device_number: Optional[int] = Field(None, description="Numer pinu GPIO (ustalany automatycznie)")
     mode: DeviceMode = Field(default=DeviceMode.MANUAL, description="Tryb pracy")
     rated_power_w: Optional[float] = Field(None, description="Deklarowana moc urządzenia (W)")
     threshold_w: Optional[float] = None
@@ -26,7 +26,7 @@ class DeviceCreate(DeviceBase):
 
 class DeviceUpdate(BaseModel):
     name: Optional[str] = None
-    gpio_pin: Optional[int] = None
+    device_number: Optional[int] = None
     mode: Optional[DeviceMode] = None
     rated_power_w: Optional[float] = None
     threshold_w: Optional[float] = None

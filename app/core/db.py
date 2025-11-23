@@ -1,6 +1,7 @@
 # src/app/core/db.py
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, scoped_session, sessionmaker
+from contextlib import asynccontextmanager
 
 from app.core.config import settings
 
@@ -15,3 +16,13 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+@asynccontextmanager
+async def transactional_session(db):
+    try:
+        yield
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise

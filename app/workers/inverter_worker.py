@@ -30,7 +30,7 @@ async def publish_status(
         "serial_number": serial,
         "active_power": power,
         "status": status,
-        "timestamp": datetime.now(timezone.utc).isoformat(),  # 🕒 dodany timestamp
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "error_message": error_message,
     }
 

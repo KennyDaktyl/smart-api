@@ -9,10 +9,8 @@ from pydantic import BaseModel, ConfigDict
 class RaspberryBase(BaseModel):
     name: str
     description: Optional[str] = None
-    firmware_version: Optional[str] = None
-    system_info: Optional[Any] = None
+    software_version: Optional[str] = None
     max_devices: int = 1
-    gpio_pins: List[int] = []
 
 
 # ====== CREATE ======
@@ -22,16 +20,9 @@ class RaspberryCreate(RaspberryBase):
 
 
 # ====== UPDATE ======
-class RaspberryUpdate(BaseModel):
-    name: Optional[str] = None
-    description: Optional[str] = None
-    firmware_version: Optional[str] = None
-    system_info: Optional[Any] = None
-    max_devices: Optional[int] = None
-    gpio_pins: Optional[List[int]] = None
+class RaspberryUpdate(RaspberryBase):
     inverter_id: Optional[int] = None
     user_id: Optional[int] = None
-    is_online: Optional[bool] = None
 
 
 # ====== OUTPUT ======
@@ -40,8 +31,6 @@ class RaspberryOut(RaspberryBase):
     id: int
     user_id: Optional[int]
     inverter_id: Optional[int]
-    is_online: bool
-    last_seen: datetime
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -53,7 +42,5 @@ class RaspberryCreateOut(RaspberryBase):
     secret_plain: str
     user_id: Optional[int]
     inverter_id: Optional[int]
-    is_online: bool
-    last_seen: datetime
-
+    
     model_config = ConfigDict(from_attributes=True)

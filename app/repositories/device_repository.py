@@ -10,6 +10,13 @@ class DeviceRepository(BaseRepository[Device]):
     def __init__(self):
         super().__init__(Device)
 
+    def create(self, db: Session, obj_in: dict):
+        obj = self.model(**obj_in)
+        db.add(obj)
+        db.flush()
+        db.refresh(obj)
+        return obj
+    
     def get_for_user(self, db: Session, user_id: int) -> List[Device]:
         """Zwraca urządzenia przypisane do danego użytkownika."""
         return (

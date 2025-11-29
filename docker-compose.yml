@@ -7,17 +7,15 @@ services:
     network_mode: "host"
     command: >
       bash -c "
-        # echo 'Checking database connectivity...';
-        # alembic revision --autogenerate -m 'auto migration' || true;
-        # echo 'Running migrations...';
-        # alembic upgrade head;
-        # echo 'Migrations complete. Starting server...';
+        echo 'Checking database connectivity...';
+        alembic revision --autogenerate -m 'auto migration' || true;
+        echo 'Running migrations...';
+        alembic upgrade head;
+        echo 'Migrations complete. Starting server...';
         uvicorn app.main:app --host 0.0.0.0 --port ${PORT}
       "
     volumes:
       - .:/app
-    ports:
-      - "${BACKEND_PORT:-8000}:${PORT:-8000}"
     env_file:
       - .env
     restart: always

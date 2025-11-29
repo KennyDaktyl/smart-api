@@ -1,3 +1,4 @@
+from configparser import ConfigParser
 from logging.config import fileConfig
 from sqlalchemy import engine_from_config, pool
 from alembic import context
@@ -7,6 +8,10 @@ from app.core.db import Base
 from app import models  # noqa: F401
 
 config = context.config
+
+config_parser = ConfigParser(interpolation=None)
+config_parser.read(config.config_file_name)
+config.file_config = config_parser
 
 config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
 

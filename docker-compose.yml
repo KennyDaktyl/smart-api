@@ -4,6 +4,7 @@ services:
     container_name: smart_energy_backend
     environment:
       PORT: ${PORT:-8000}
+    network_mode: "host"
     command: >
       bash -c "
         # echo 'Checking database connectivity...';
@@ -20,6 +21,3 @@ services:
     env_file:
       - .env
     restart: always
-
-volumes:
-  postgres_data:

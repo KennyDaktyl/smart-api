@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from typing import Optional
+
 from pydantic import BaseModel, Field
 
 
@@ -16,7 +17,7 @@ class InverterEvent(BaseModel):
 
     timestamp: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
-        description="Czas wygenerowania eventu (UTC)"
+        description="Czas wygenerowania eventu (UTC)",
     )
 
     error_message: Optional[str] = Field(

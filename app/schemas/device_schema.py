@@ -9,7 +9,9 @@ from app.constans.device_mode import DeviceMode
 
 class DeviceBase(BaseModel):
     name: str = Field(..., description="Nazwa urządzenia")
-    device_number: Optional[int] = Field(None, description="Numer pinu GPIO (ustalany automatycznie)")
+    device_number: Optional[int] = Field(
+        None, description="Numer pinu GPIO (ustalany automatycznie)"
+    )
     mode: DeviceMode = Field(default=DeviceMode.MANUAL, description="Tryb pracy")
     rated_power_kw: Optional[float] = Field(None, description="Deklarowana moc urządzenia (W)")
     threshold_kw: Optional[float] = None
@@ -37,6 +39,4 @@ class DeviceOut(DeviceBase):
     is_on: bool
     last_update: datetime
 
-    model_config = {
-        "from_attributes": True
-    }
+    model_config = {"from_attributes": True}

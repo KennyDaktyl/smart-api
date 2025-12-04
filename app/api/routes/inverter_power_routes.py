@@ -7,9 +7,9 @@ from sqlalchemy.orm import Session
 from app.constans.role import UserRole
 from app.core.db import get_db
 from app.core.dependencies import get_current_user
+from app.models.user import User
 from app.repositories.inverter_power_record_repository import InverterPowerRepository
 from app.repositories.inverter_repository import InverterRepository
-from app.models.user import User
 
 router = APIRouter(prefix="/inverter-power", tags=["Inverter Power"])
 logger = logging.getLogger(__name__)
@@ -44,18 +44,18 @@ def get_latest_inverter_power(
     record = repo.get_latest_for_inverter(inverter_id)
 
     if not record:
-            active_power = None
-            timestamp = None
-            message = "No power data available yet"
+        active_power = None
+        timestamp = None
+        message = "No power data available yet"
     else:
         active_power = float(record.active_power)
         timestamp = record.timestamp
         message = "Latest inverter power data retrieved successfully"
-        
+
     return {
         "inverter_id": inverter.id,
         "serial_number": inverter.serial_number,
         "active_power": active_power,
         "timestamp": timestamp,
-        "message": message
+        "message": message,
     }

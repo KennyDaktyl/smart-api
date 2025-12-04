@@ -1,7 +1,8 @@
 # src/app/core/db.py
+from contextlib import asynccontextmanager
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, scoped_session, sessionmaker
-from contextlib import asynccontextmanager
 
 from app.core.config import settings
 

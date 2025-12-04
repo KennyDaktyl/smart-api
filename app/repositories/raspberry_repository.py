@@ -2,8 +2,10 @@ from datetime import datetime, timezone
 from typing import List, Optional
 from uuid import UUID
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
+from app.models.installation import Installation
+from app.models.inverter import Inverter
 from app.models.raspberry import Raspberry
 from app.repositories.base_repository import BaseRepository
 
@@ -44,13 +46,22 @@ class RaspberryRepository(BaseRepository[Raspberry]):
         db.commit()
         return True
 
-    def mark_online(self, db: Session, uuid: UUID, system_info: dict | None = None):
-        raspberry = self.get_by_uuid(db, uuid)
-        if not raspberry:
-            return None
-        raspberry.is_online = True
-        raspberry.last_seen = datetime.now(timezone.utc)
-        if system_info:
-            raspberry.system_info = system_info
-        db.commit()
-        return raspberry
+    def get_full_for_user(self, db: Session, user_id: int):
+        raspberries = (
+            db.query(Raspberry)
+            .filter(Raspberry.user_id == user_id)
+            .options(
+                joinedload(Raspberry.devices),
+                joinedload(Raspberry.inverter).joinedload(Inverter.installation),
+            )
+            .all()
+        )
+
+        installations = (
+            db.query(Installation)
+            .filter(Installation.user_id == user_id)
+            .options(joinedload(Installation.inverters))
+            .all()
+        )
+
+        return raspberries, installations

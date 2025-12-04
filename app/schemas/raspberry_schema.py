@@ -4,6 +4,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
+from app.schemas.device_schema import DeviceOut
+
 
 # ====== BASE ======
 class RaspberryBase(BaseModel):
@@ -42,5 +44,9 @@ class RaspberryCreateOut(RaspberryBase):
     secret_plain: str
     user_id: Optional[int]
     inverter_id: Optional[int]
-    
+
     model_config = ConfigDict(from_attributes=True)
+
+
+class RaspberryFullOut(RaspberryOut):
+    devices: list[DeviceOut]

@@ -5,6 +5,13 @@ from pydantic import BaseModel
 from app.schemas.inverter_schema import InverterOut
 
 
+class InstallationLite(BaseModel):
+    id: int
+    name: str
+
+    model_config = {"from_attributes": True}
+
+
 class InstallationBase(BaseModel):
     name: str
     station_code: str
@@ -25,6 +32,4 @@ class InstallationOut(InstallationBase):
     user_id: int
     inverters: List[InverterOut] = []
 
-    model_config = {
-        "from_attributes": True
-    }
+    model_config = {"from_attributes": True}

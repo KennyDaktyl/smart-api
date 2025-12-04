@@ -1,7 +1,9 @@
 #  app/schemas/event_shemas.py
-from pydantic import BaseModel
 from enum import Enum
-from typing import Optional, List
+from typing import List, Optional
+
+from pydantic import BaseModel
+
 from app.constans.events import EventType
 
 
@@ -11,7 +13,7 @@ class BaseEvent(BaseModel):
 
 class DeviceCreatedPayload(BaseModel):
     device_id: int
-    device_number: int        # 1..3
+    device_number: int  # 1..3
     mode: str
     threshold_kw: Optional[float] = None
 
@@ -52,7 +54,7 @@ class DeviceCommandEvent(BaseEvent):
 
 class DeviceDeletePayload(BaseModel):
     device_id: int
-    
-    
+
+
 class DeviceDeletedEvent(BaseEvent):
     payload: DeviceDeletePayload

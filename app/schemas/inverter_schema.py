@@ -3,6 +3,24 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
+from app.schemas.raspberry_schema import RaspberryFullOut
+
+
+class InstallationLite(BaseModel):
+    id: int
+    name: str
+
+    model_config = {"from_attributes": True}
+
+
+class InverterLite(BaseModel):
+    id: int
+    name: str | None
+    serial_number: str
+    installation: InstallationLite | None = None
+
+    model_config = {"from_attributes": True}
+
 
 class InverterBase(BaseModel):
     name: Optional[str] = Field(None, description="Nazwa inwertera (Huawei devName)")
@@ -31,5 +49,6 @@ class InverterOut(InverterBase):
     id: int
     installation_id: int
     last_updated: datetime
+    raspberries: list[RaspberryFullOut]
 
     model_config = {"from_attributes": True}

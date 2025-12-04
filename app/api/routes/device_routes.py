@@ -1,19 +1,20 @@
 # app/api/routes/device_routes.py
 
 from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
 from app.constans.role import UserRole
 from app.core.db import get_db
 from app.core.dependencies import get_current_user
-from app.nats.client import NatsClient
 from app.core.roles import require_role
+from app.models.user import User
+from app.nats.client import NatsClient
+from app.nats.publisher import NatsPublisher
 from app.repositories.device_repository import DeviceRepository
 from app.schemas.device_schema import DeviceCreate, DeviceUpdate
 from app.services.device_service import DeviceService
-from app.models.user import User
-from app.nats.publisher import NatsPublisher
 
 router = APIRouter(prefix="/devices", tags=["Devices"])
 
@@ -41,7 +42,7 @@ def get_device(
 async def create_device(
     payload: DeviceCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     data = payload.model_dump()
     data["user_id"] = current_user.id
@@ -62,9 +63,7 @@ async def update_device(
 
 @router.delete("/{device_id}", status_code=204)
 async def delete_device(
-    device_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    device_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
 ):
     await device_service.delete_device(db, device_id, current_user)
     return Response(status_code=204)
@@ -90,8 +89,4 @@ def list_devices_for_raspberry(
     current_user: User = Depends(get_current_user),
 ):
     device_repo = DeviceRepository()
-    return device_repo.get_for_raspberry(
-        db=db,
-        raspberry_id=raspberry_id,
-        user_id=current_user.id
-    )
+    return device_repo.get_for_raspberry(db=db, raspberry_id=raspberry_id, user_id=current_user.id)

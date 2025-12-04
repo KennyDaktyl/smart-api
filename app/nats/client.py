@@ -1,7 +1,9 @@
 # app/core/nats/client.py
 import logging
+
 from nats.aio.client import Client as NATS
 from nats.js import JetStreamContext
+
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -62,7 +64,6 @@ class NatsClient:
             except:
                 logger.warning("NATS socket dead — reconnecting...")
                 await self.connect()
-
 
     async def close(self):
         try:

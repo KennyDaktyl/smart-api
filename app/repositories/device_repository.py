@@ -16,7 +16,7 @@ class DeviceRepository(BaseRepository[Device]):
         db.flush()
         db.refresh(obj)
         return obj
-    
+
     def get_for_user(self, db: Session, user_id: int) -> List[Device]:
         """Zwraca urządzenia przypisane do danego użytkownika."""
         return (

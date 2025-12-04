@@ -10,23 +10,13 @@ from fastapi_cache import FastAPICache
 from fastapi_cache.backends.redis import RedisBackend
 from redis import asyncio as aioredis
 
-
-from app.api.routes import (
-    auth,
-    device_routes,
-    device_schedule_routes,
-    huawei_routes,
-    installation_routes,
-    inverter_power_routes,
-    inverter_routes,
-    raspberry_routes,
-    user_routes,
-)
+from app.api.routes import (auth, device_routes, device_schedule_routes, huawei_routes,
+                            installation_routes, inverter_power_routes, inverter_routes,
+                            raspberry_routes, user_routes)
 from app.core.config import settings
 from app.core.logging import root_logger
-from app.workers.inverter_worker import scheduler, start_inverter_scheduler
-
 from app.nats.module import nats_module
+from app.workers.inverter_worker import scheduler, start_inverter_scheduler
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -106,7 +96,4 @@ app.include_router(device_schedule_routes.router, prefix="/api")
 
 @app.get("/health", tags=["System"])
 def health_check():
-    return {
-        "status": "ok",
-        "nats_connected": app.state.nats.client.nc is not None
-    }
+    return {"status": "ok", "nats_connected": app.state.nats.client.nc is not None}

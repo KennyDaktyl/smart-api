@@ -47,6 +47,4 @@ class UserInstallationsResponse(BaseModel):
     created_at: datetime
     installations: List[InstallationOut] = []
 
-    model_config = {
-        "from_attributes": True
-    }
+    model_config = {"from_attributes": True}

@@ -25,6 +25,4 @@ class DeviceScheduleOut(DeviceScheduleBase):
     id: int
     device_id: int
 
-    model_config = {
-        "from_attributes": True
-    }
+    model_config = {"from_attributes": True}

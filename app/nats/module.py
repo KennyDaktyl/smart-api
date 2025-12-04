@@ -2,11 +2,12 @@
 
 import logging
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 
 from app.nats.client import NatsClient
-from app.nats.publisher import NatsPublisher
 from app.nats.listener import NatsListener
+from app.nats.publisher import NatsPublisher
 
 logger = logging.getLogger(__name__)
 

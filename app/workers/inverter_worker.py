@@ -8,11 +8,11 @@ from sqlalchemy.orm import Session
 from app.adapters.adapter_cache import get_adapter_for_user
 from app.core.config import settings
 from app.core.db import SessionLocal
-from app.events.inverter_event import InverterEvent
-from app.repositories.user_repository import UserRepository
-from app.repositories.inverter_power_record_repository import InverterPowerRepository
-from app.nats.module import nats_module
 from app.core.exceptions import HuaweiRateLimitException
+from app.events.inverter_event import InverterEvent
+from app.nats.module import nats_module
+from app.repositories.inverter_power_record_repository import InverterPowerRepository
+from app.repositories.user_repository import UserRepository
 
 logger = logging.getLogger(__name__)
 scheduler = BackgroundScheduler()
@@ -76,9 +76,7 @@ async def fetch_inverter_production_async():
                         logger.debug(f"[Worker] Production data for {serial}: {production_data}")
 
                     except HuaweiRateLimitException as e:
-                        logger.warning(
-                            f"[Worker] Huawei rate limit for inverter {serial}: {e}"
-                        )
+                        logger.warning(f"[Worker] Huawei rate limit for inverter {serial}: {e}")
 
                         event = InverterEvent(
                             inverter_id=inverter_id,
@@ -107,11 +105,7 @@ async def fetch_inverter_production_async():
                         await publish_inverter_event(event)
                         continue
 
-                    active_power = (
-                        production_data[0]
-                        .get("dataItemMap", {})
-                        .get("active_power")
-                    )
+                    active_power = production_data[0].get("dataItemMap", {}).get("active_power")
                     if active_power is None:
                         msg = f"Inverter {serial} returned no 'active_power'"
                         logger.warning(f"[Worker] {msg}")

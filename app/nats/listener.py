@@ -2,6 +2,7 @@
 
 import json
 import logging
+
 from nats.js.api import DeliverPolicy
 
 from app.nats.client import NatsClient

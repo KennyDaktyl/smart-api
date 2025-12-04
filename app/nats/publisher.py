@@ -37,9 +37,7 @@ class NatsPublisher:
                 return ack
 
             except Exception as e:
-                logger.error(
-                    f"[NATS] Publish failed (attempt {attempt}/{retries}): {e}"
-                )
+                logger.error(f"[NATS] Publish failed (attempt {attempt}/{retries}): {e}")
                 await asyncio.sleep(0.5 * attempt)
 
         raise Exception(f"NATS publish failed after {retries} attempts")
@@ -50,7 +48,7 @@ class NatsPublisher:
         ack_subject: str,
         message: dict,
         predicate: Callable[[dict], bool],
-        timeout: float = 3.0
+        timeout: float = 3.0,
     ) -> dict:
         await self.client.ensure_connected()
 

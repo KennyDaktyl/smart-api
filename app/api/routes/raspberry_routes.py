@@ -11,10 +11,10 @@ from app.core.db import get_db
 from app.core.dependencies import get_current_user
 from app.core.roles import require_role
 from app.core.security import get_password_hash
+from app.models.user import User
 from app.repositories.raspberry_repository import RaspberryRepository
 from app.schemas.raspberry_schema import (RaspberryCreate, RaspberryCreateOut, RaspberryOut,
                                           RaspberryUpdate)
-from app.models.user import User
 
 router = APIRouter(prefix="/raspberries", tags=["Raspberry"])
 logger = logging.getLogger(__name__)

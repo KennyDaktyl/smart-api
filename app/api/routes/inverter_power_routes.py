@@ -48,7 +48,7 @@ def get_latest_inverter_power(
         timestamp = None
         message = "No power data available yet"
     else:
-        active_power = float(record.active_power)
+        active_power = float(record.active_power) if record.active_power is not None else None
         timestamp = record.timestamp
         message = "Latest inverter power data retrieved successfully"
 

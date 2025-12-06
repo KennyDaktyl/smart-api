@@ -1,8 +1,8 @@
 """auto migration
 
-Revision ID: 9fea989c7e5a
+Revision ID: 1fdd479a949d
 Revises: 
-Create Date: 2025-11-23 08:44:28.052418
+Create Date: 2025-11-29 16:23:18.527822
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '9fea989c7e5a'
+revision: str = '1fdd479a949d'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -91,10 +91,10 @@ def upgrade() -> None:
     sa.Column('uuid', sa.UUID(), nullable=True),
     sa.Column('user_id', sa.Integer(), nullable=True),
     sa.Column('raspberry_id', sa.Integer(), nullable=True),
-    sa.Column('gpio_pin', sa.Integer(), nullable=False),
-    sa.Column('rated_power_w', sa.Numeric(), nullable=True),
+    sa.Column('device_number', sa.Integer(), nullable=False),
+    sa.Column('rated_power_kw', sa.Numeric(), nullable=True),
     sa.Column('mode', sa.Enum('MANUAL', 'AUTO_POWER', 'SCHEDULE', name='devicemode'), nullable=False),
-    sa.Column('threshold_w', sa.Numeric(), nullable=True),
+    sa.Column('threshold_kw', sa.Numeric(), nullable=True),
     sa.Column('hysteresis_w', sa.Numeric(), nullable=True),
     sa.Column('schedule', sa.JSON(), nullable=True),
     sa.Column('is_on', sa.Boolean(), nullable=True),

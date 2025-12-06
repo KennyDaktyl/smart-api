@@ -52,12 +52,14 @@ class DeviceService:
             self.logger.info("Device created id=%s user_id=%s", device.id, device.user_id)
 
             rpi_uuid = device.raspberry.uuid
+            inverter_serial = device.raspberry.inverter.serial_number if device.raspberry.inverter else None
 
             payload = DeviceCreatedPayload(
                 device_id=device.id,
                 device_number=device.device_number,
                 mode=device.mode.value,
                 threshold_kw=device.threshold_kw,
+                inverter_serial=inverter_serial,
             )
 
             try:

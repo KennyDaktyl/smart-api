@@ -36,7 +36,10 @@ class InverterPowerRepository:
         return (
             self.db.query(InverterPowerRecord)
             .filter(InverterPowerRecord.inverter_id == inverter_id)
-            .order_by(InverterPowerRecord.timestamp.desc())
+            .order_by(
+                InverterPowerRecord.timestamp.desc(),
+                InverterPowerRecord.id.desc(),
+            )
             .first()
         )
 
@@ -44,7 +47,10 @@ class InverterPowerRepository:
         return (
             self.db.query(InverterPowerRecord)
             .filter(InverterPowerRecord.inverter_id == inverter_id)
-            .order_by(InverterPowerRecord.timestamp.desc())
+            .order_by(
+                InverterPowerRecord.timestamp.desc(),
+                InverterPowerRecord.id.desc(),
+            )
             .limit(limit)
             .all()
         )

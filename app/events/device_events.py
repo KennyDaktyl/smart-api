@@ -14,6 +14,7 @@ class DeviceCreatedPayload(APIModel):
     device_number: int  # 1..3
     mode: str
     threshold_kw: Optional[float] = None
+    inverter_serial: Optional[str] = None
 
 
 class DeviceCreatedEvent(BaseEvent):

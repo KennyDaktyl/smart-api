@@ -31,11 +31,19 @@ class DeviceEventRepository:
         db.refresh(event)
         return event
 
-    def list_for_device(self, db: Session, device_id: int, limit: int = 200) -> List[DeviceEvent]:
-        return (
-            db.query(DeviceEvent)
-            .filter(DeviceEvent.device_id == device_id)
-            .order_by(DeviceEvent.timestamp.desc())
-            .limit(limit)
-            .all()
-        )
+    def list_for_device(
+        self,
+        db: Session,
+        device_id: int,
+        limit: int = 200,
+        date_start=None,
+        date_end=None,
+    ) -> List[DeviceEvent]:
+        query = db.query(DeviceEvent).filter(DeviceEvent.device_id == device_id)
+
+        if date_start is not None:
+            query = query.filter(DeviceEvent.timestamp >= date_start)
+        if date_end is not None:
+            query = query.filter(DeviceEvent.timestamp <= date_end)
+
+        return query.order_by(DeviceEvent.timestamp.desc()).limit(limit).all()

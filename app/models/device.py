@@ -36,6 +36,7 @@ class Device(Base):
 
     is_on = Column(Boolean, default=False)
     last_update = Column(DateTime(timezone=True), default=datetime.now(timezone.utc))
+    manual_state = Column(Boolean, nullable=True)
 
     raspberry = relationship("Raspberry", back_populates="devices")
     user = relationship("User", back_populates="devices")

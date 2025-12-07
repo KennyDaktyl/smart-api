@@ -154,12 +154,14 @@ class DeviceService:
         if not device:
             raise HTTPException(404, "Device not found")
 
+        device_id_val = device.id
+        user_id_val = current_user.id
         raspberry: Raspberry = device.raspberry
         serial = raspberry.uuid
         self.logger.info(
             "Manual state change requested device_id=%s user_id=%s state=%s",
-            device.id,
-            current_user.id,
+            device_id_val,
+            user_id_val,
             state,
         )
 
@@ -171,22 +173,22 @@ class DeviceService:
                 subject=subject,
                 ack_subject=ack_subject,
                 event_type=EventType.DEVICE_COMMAND,
-                payload={"device_id": device.id, "command": "SET_STATE", "is_on": bool(state)},
-                predicate=lambda p: p.get("device_id") == device.id,
+                payload={"device_id": device_id_val, "command": "SET_STATE", "is_on": bool(state)},
+                predicate=lambda p: p.get("device_id") == device_id_val,
                 timeout=10.0,
             )
             logging.info(
                 "Manual state set ack received device_id=%s user_id=%s state=%s ack=%s",
-                device.id,
-                current_user.id,
+                device_id_val,
+                user_id_val,
                 state,
                 ack,
             )
         except Exception as e:
             logging.error(
                 "Error while setting manual state device_id=%s user_id=%s state=%s error=%s",
-                device.id,
-                current_user.id,
+                device_id_val,
+                user_id_val,
                 state,
                 str(e),
             )
@@ -195,8 +197,8 @@ class DeviceService:
         if not ack.get("ok"):
             logging.error(
                 "Raspberry failed to set manual state device_id=%s user_id=%s state=%s",
-                device.id,
-                current_user.id,
+                device_id_val,
+                user_id_val,
                 state,
             )
             raise HTTPException(500, "Raspberry failed to set state")

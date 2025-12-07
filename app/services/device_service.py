@@ -175,10 +175,30 @@ class DeviceService:
                 predicate=lambda p: p.get("device_id") == device.id,
                 timeout=4.0,
             )
+            logging.info(
+                "Manual state set ack received device_id=%s user_id=%s state=%s ack=%s",
+                device.id,
+                current_user.id,
+                state,
+                ack,
+            )
         except Exception as e:
+            logging.error(
+                "Error while setting manual state device_id=%s user_id=%s state=%s error=%s",
+                device.id,
+                current_user.id,
+                state,
+                str(e),
+            )
             raise HTTPException(status_code=504, detail=str(e))
 
         if not ack.get("ok"):
+            logging.error(
+                "Raspberry failed to set manual state device_id=%s user_id=%s state=%s",
+                device.id,
+                current_user.id,
+                state,
+            )
             raise HTTPException(500, "Raspberry failed to set state")
 
         updated_device = self.repo.update_for_user(

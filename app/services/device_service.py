@@ -204,7 +204,7 @@ class DeviceService:
             raise HTTPException(500, "Raspberry failed to set state")
 
         updated_device = self.repo.update_for_user(
-            db, device_id, current_user.id, {"manual_state": state}
+            db, device_id_val, user_id_val, {"manual_state": state}
         )
         self.logger.info(
             "Manual state updated device_id=%s user_id=%s state=%s",

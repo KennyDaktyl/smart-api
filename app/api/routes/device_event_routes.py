@@ -23,27 +23,28 @@ logger = logging.getLogger(__name__)
 def log_device_state(payload: DeviceEventCreate, db: Session = Depends(get_db)):
     timestamp = payload.timestamp or datetime.now(timezone.utc)
 
-    event = repo.create_state_event(
-        db,
-        device_id=payload.device_id,
-        pin_state=payload.pin_state,
-        trigger_reason=payload.trigger_reason,
-        power_kw=payload.power_kw,
-        timestamp=timestamp,
-    )
+    # event = repo.create_state_event(
+    #     db,
+    #     device_id=payload.device_id,
+    #     pin_state=payload.pin_state,
+    #     trigger_reason=payload.trigger_reason,
+    #     power_kw=payload.power_kw,
+    #     timestamp=timestamp,
+    # )
 
-    logger.info(
-        "Device event persisted",
-        extra={
-            "device_id": payload.device_id,
-            "pin_state": payload.pin_state,
-            "trigger_reason": payload.trigger_reason,
-            "power_kw": payload.power_kw,
-            "timestamp": timestamp.isoformat(),
-        },
-    )
+    # logger.info(
+    #     "Device event persisted",
+    #     extra={
+    #         "device_id": payload.device_id,
+    #         "pin_state": payload.pin_state,
+    #         "trigger_reason": payload.trigger_reason,
+    #         "power_kw": payload.power_kw,
+    #         "timestamp": timestamp.isoformat(),
+    #     },
+    # )
+    return {}
 
-    return event
+    # return event
 
 
 @router.get("/device/{device_id}", response_model=DeviceEventSeriesOut)

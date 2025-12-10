@@ -90,7 +90,6 @@ def test_post_device_event_off_to_on_and_fetch_summary(api_client, db_session):
 
     assert payload["rated_power_kw"] == 0.7
     assert payload["total_minutes_on"] == 15
-    assert abs(payload["average_power_kw"] - 0.7) < 1e-6
     # 0.7 kW * 0.25 h = 0.175 kWh
     assert abs(payload["energy_kwh"] - 0.175) < 1e-6
     assert payload["events"][0]["state"] in ("ON", "OFF")

@@ -25,6 +25,5 @@ class DeviceEventOut(ORMModel):
 class DeviceEventSeriesOut(APIModel):
     events: list[DeviceEventOut]
     total_minutes_on: int
-    average_power_kw: Optional[float] = None
     energy_kwh: Optional[float] = None
     rated_power_kw: Optional[float] = None

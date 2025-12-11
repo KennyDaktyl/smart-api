@@ -30,11 +30,7 @@ async def lifespan(app: FastAPI):
     logger.info("Starting Smart Energy Backend...")
 
     try:
-        redis = aioredis.from_url(
-            f"redis://{settings.REDIS_HOST}:6379",
-            encoding="utf8",
-            decode_responses=True,
-        )
+        redis = aioredis.from_url(f"redis://{settings.REDIS_HOST}:6379")
         FastAPICache.init(RedisBackend(redis), prefix="smartenergy-cache")
         logger.info("Redis cache initialized successfully.")
     except Exception as e:
@@ -43,7 +39,7 @@ async def lifespan(app: FastAPI):
     nats_module.init_app(app)
 
     try:
-        start_inverter_scheduler()
+        # start_inverter_scheduler()
         logger.info("Inverter scheduler started successfully.")
     except Exception as e:
         logger.exception(f"Failed to start inverter scheduler: {e}")

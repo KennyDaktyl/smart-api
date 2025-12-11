@@ -23,6 +23,16 @@ class Settings(BaseSettings):
 
     NATS_URL: str = Field("nats://localhost:4222", env="NATS_URL")
 
+    EMAIL_HOST: str = Field("smtp.example.com", env="EMAIL_HOST")
+    EMAIL_PORT: int = Field(587, env="EMAIL_PORT")
+    EMAIL_USER: str | None = Field(None, env="EMAIL_USER")
+    EMAIL_PASSWORD: str | None = Field(None, env="EMAIL_PASSWORD")
+    EMAIL_FROM: str = Field("no-reply@smartenergy.local", env="EMAIL_FROM")
+    EMAIL_USE_TLS: bool = Field(True, env="EMAIL_USE_TLS")
+    EMAIL_USE_SSL: bool = Field(False, env="EMAIL_USE_SSL")
+
+    FRONTEND_URL: str = Field("http://localhost:5173", env="FRONTEND_URL")
+
     WDB_SOCKET_SERVER: str | None = Field(
         default=None, description="Host (Docker container) where wdb server runs"
     )

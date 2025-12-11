@@ -1,4 +1,10 @@
 services:
+
+  redis:
+    image: "redis:latest"
+    container_name: smart_energy_redis
+    network_mode: "host"
+    
   backend:
     build: .
     container_name: smart_energy_backend
@@ -14,6 +20,8 @@ services:
         # echo 'Migrations complete. Starting server...';
         uvicorn app.main:app --host 0.0.0.0 --port ${PORT}
       "
+    depends_on:
+      - redis
     volumes:
       - .:/app
     env_file:

@@ -45,3 +45,20 @@ class UserInstallationsResponse(ORMModel):
     huawei_username: str | None = None
     created_at: datetime
     installations: List[InstallationOut] = []
+
+
+class EmailTokenRequest(APIModel):
+    token: str
+
+
+class PasswordResetRequest(APIModel):
+    email: EmailStr
+
+
+class PasswordResetConfirm(APIModel):
+    token: str
+    new_password: str
+
+
+class MessageResponse(APIModel):
+    message: str

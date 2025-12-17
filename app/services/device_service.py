@@ -1,216 +1,145 @@
-# app/services/device_service.py
 import logging
+from typing import Callable
+from uuid import UUID
 
-from fastapi import HTTPException
+from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.constans.events import EventType
 from app.core.db import transactional_session
-from app.events.device_events import DeviceCreatedPayload, DeviceUpdatedPayload
-from app.events.event_dispatcher import EventDispatcher
-from app.models.device import Device
-from app.models.raspberry import Raspberry
-from app.models.user import User
-from app.nats.publisher import NatsPublisher
-from app.repositories.device_repository import DeviceRepository
-from app.schemas.device_schema import DeviceOut
+from smart_common.enums.event import EventType
+from smart_common.events.device_events import (
+    DeviceCreatedPayload,
+    DeviceDeletedPayload,
+    DeviceUpdatedPayload,
+)
+from smart_common.events.event_dispatcher import EventDispatcher
+from smart_common.nats.client import NATSClient
+from smart_common.nats.publisher import NatsPublisher
+from smart_common.models.device import Device
+from smart_common.models.microcontroller import Microcontroller
+from smart_common.repositories.device import DeviceRepository
+from smart_common.repositories.microcontroller import MicrocontrollerRepository
 
 
 class DeviceService:
-
-    def __init__(self, repo: DeviceRepository, nats: NatsPublisher):
-        self.repo = repo
-        self.events = EventDispatcher(nats)
+    def __init__(
+        self,
+        repo_factory: Callable[[Session], DeviceRepository],
+        microcontroller_repo_factory: Callable[[Session], MicrocontrollerRepository],
+    ):
+        self._repo_factory = repo_factory
+        self._microcontroller_repo_factory = microcontroller_repo_factory
         self.logger = logging.getLogger(__name__)
+        self.events = EventDispatcher(NatsPublisher(NATSClient()))
 
-    def list_all(self, db: Session):
-        self.logger.info("Listing all devices")
-        return self.repo.get_all(db)
+    def _repo(self, db: Session) -> DeviceRepository:
+        return self._repo_factory(db)
 
-    def list_for_user(self, db: Session, user_id: int):
-        self.logger.info("Listing devices for user_id=%s", user_id)
-        return self.repo.get_for_user(db, user_id)
+    def _microcontroller_repo(self, db: Session) -> MicrocontrollerRepository:
+        return self._microcontroller_repo_factory(db)
 
-    def get_device(self, db: Session, device_id: int, current_user: User):
-        device = self.repo.get_for_user_by_id(db, device_id, current_user.id)
+    def _subject_for_microcontroller(self, mc_uuid: UUID) -> str:
+        return f"device_communication.microcontroller.{mc_uuid}.events"
 
-        if not device and current_user.role == "ADMIN":
-            device = self.repo.get_by_id(db, device_id)
+    def _ack_subject(self, mc_uuid: UUID) -> str:
+        return f"{self._subject_for_microcontroller(mc_uuid)}.ack"
 
+    def _ensure_microcontroller(self, db: Session, user_id: int, mc_uuid: UUID) -> Microcontroller:
+        microcontroller = self._microcontroller_repo(db).get_for_user_by_uuid(mc_uuid, user_id)
+        if not microcontroller:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Microcontroller not found")
+        return microcontroller
+
+    def get_device(self, db: Session, device_id: int, user_id: int) -> Device:
+        device = self._repo(db).get_for_user_by_id(device_id, user_id)
         if not device:
-            raise HTTPException(404, "Device not found")
-
-        if current_user.role != "ADMIN" and device.user_id != current_user.id:
-            raise HTTPException(403, "Access denied")
-
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Device not found")
         return device
 
-    async def create_device(self, db: Session, data: dict):
+    def list_for_microcontroller(self, db: Session, user_id: int, mc_uuid: UUID) -> list[Device]:
+        microcontroller = self._ensure_microcontroller(db, user_id, mc_uuid)
+        return self._repo(db).get_for_microcontroller(microcontroller.id, user_id)
+
+    async def create_device(self, db: Session, user_id: int, mc_uuid: UUID, payload: dict) -> Device:
+        microcontroller = self._ensure_microcontroller(db, user_id, mc_uuid)
+
         async with transactional_session(db):
+            data = dict(payload)
+            data["microcontroller_id"] = microcontroller.id
 
-            device: Device = self.repo.create(db, data)
-            self.logger.info("Device created id=%s user_id=%s", device.id, device.user_id)
-
-            rpi_uuid = device.raspberry.uuid
-            inverter_serial = device.raspberry.inverter.serial_number if device.raspberry.inverter else None
-
-            payload = DeviceCreatedPayload(
-                device_id=device.id,
-                device_number=device.device_number,
-                mode=device.mode.value,
-                threshold_kw=device.threshold_kw,
-                inverter_serial=inverter_serial,
+            device = self._repo(db).create(data)
+            self.logger.info(
+                "Device created id=%s microcontroller=%s",
+                device.id,
+                microcontroller.uuid,
             )
 
-            try:
-                ack = await self.events.publish_event_and_wait_for_ack(
-                    subject=f"device_communication.raspberry.{rpi_uuid}.events",
-                    ack_subject=f"device_communication.raspberry.{rpi_uuid}.events.ack",
-                    event_type=EventType.DEVICE_CREATED,
-                    payload=payload,
-                    predicate=lambda p: p.get("device_id") == device.id,
-                    timeout=10.0,
-                )
-            except Exception as e:
-                raise Exception(f"Failed to send device creation event to agent: {e}")
+            await self._publish_event(
+                microcontroller_uuid=microcontroller.uuid,
+                event_type=EventType.DEVICE_CREATED,
+                payload=DeviceCreatedPayload(
+                    device_id=device.id,
+                    device_number=device.device_number,
+                    mode=device.mode.value,
+                    threshold_kw=None,
+                    inverter_serial=None,
+                ),
+            )
 
-            if not ack.get("ok", False):
-                raise Exception("Agent returned negative ACK")
+            return device
 
-            self.logger.info("Device creation acknowledged by agent device_id=%s", device.id)
-            return DeviceOut.model_validate(device)
+    async def update_device(
+        self, db: Session, user_id: int, device_id: int, payload: dict
+    ) -> Device:
+        device = self.get_device(db, device_id, user_id)
 
-    async def update_device(self, db: Session, device_id: int, user_id: int, data: dict):
-        device = self.repo.get_for_user_by_id(db, device_id, user_id)
-        if not device:
-            raise HTTPException(404, "Device not found")
+        async with transactional_session(db):
+            updated = self._repo(db).update_for_user(device_id, user_id, payload)
+            if not updated:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Device not found")
 
-        raspberry = device.raspberry
-        rpi_uuid = raspberry.uuid
+            self.logger.info("Device updated id=%s", updated.id)
 
-        updated_device = self.repo.update_for_user(db, device_id, user_id, data)
-        if not updated_device:
-            raise HTTPException(404, "Device not found after update")
-        self.logger.info("Device updated id=%s user_id=%s", updated_device.id, updated_device.user_id)
-
-        payload = DeviceUpdatedPayload(
-            device_id=updated_device.id,
-            mode=updated_device.mode.value,
-            threshold_kw=updated_device.threshold_kw,
-        )
-
-        subject = f"device_communication.raspberry.{rpi_uuid}.events"
-        ack_subject = f"device_communication.raspberry.{rpi_uuid}.events.ack"
-
-        try:
-            ack = await self.events.publish_event_and_wait_for_ack(
-                subject=subject,
-                ack_subject=ack_subject,
+            await self._publish_event(
+                microcontroller_uuid=device.microcontroller.uuid,
                 event_type=EventType.DEVICE_UPDATED,
-                payload=payload,
-                predicate=lambda p: p.get("device_id") == updated_device.id,
-                timeout=10.0,
+                payload=DeviceUpdatedPayload(
+                    device_id=updated.id,
+                    mode=updated.mode.value,
+                    threshold_kw=None,
+                ),
             )
-        except Exception as e:
-            raise HTTPException(504, f"Raspberry not responding: {str(e)}")
 
-        if not ack.get("ok"):
-            raise HTTPException(500, "Raspberry failed to process update")
+            return updated
 
-        self.logger.info("Device update acknowledged by agent device_id=%s", updated_device.id)
-        return updated_device
+    async def delete_device(self, db: Session, user_id: int, device_id: int) -> None:
+        device = self.get_device(db, device_id, user_id)
 
-    async def delete_device(self, db: Session, device_id: int, current_user: User):
-        device: Device = self.get_device(db, device_id, current_user)
-
-        raspberry: Raspberry = device.raspberry
-        rpi_uuid = raspberry.uuid
-
-        subject = f"device_communication.raspberry.{rpi_uuid}.events"
-        ack_subject = f"device_communication.raspberry.{rpi_uuid}.events.ack"
-
-        try:
-            ack = await self.events.publish_event_and_wait_for_ack(
-                subject=subject,
-                ack_subject=ack_subject,
+        async with transactional_session(db):
+            await self._publish_event(
+                microcontroller_uuid=device.microcontroller.uuid,
                 event_type=EventType.DEVICE_DELETED,
-                payload={"device_id": device.id},
-                predicate=lambda p: p.get("device_id") == device.id,
-                timeout=10.0,
+                payload=DeviceDeletedPayload(device_id=device.id),
             )
-        except Exception as e:
-            raise HTTPException(504, f"Raspberry not responding: {str(e)}")
 
-        if not ack.get("ok"):
-            raise HTTPException(500, "Raspberry failed to delete device")
+            self._repo(db).delete(device)
+            self.logger.info("Device deleted id=%s", device.id)
 
-        self.repo.delete(db, device.id)
-        self.logger.info("Device deleted id=%s user_id=%s", device.id, device.user_id)
-
-        return True
-
-    async def set_manual_state(self, db: Session, device_id: int, current_user: User, state: int):
-        device = self.repo.get_for_user_by_id(db, device_id, current_user.id)
-        if not device:
-            raise HTTPException(404, "Device not found")
-
-        device_id_val = device.id
-        user_id_val = current_user.id
-        raspberry: Raspberry = device.raspberry
-        serial = raspberry.uuid
-        self.logger.info(
-            "Manual state change requested device_id=%s user_id=%s state=%s",
-            device_id_val,
-            user_id_val,
-            state,
-        )
-
-        subject = f"device_communication.raspberry.{serial}.events"
-        ack_subject = f"device_communication.raspberry.{serial}.events.ack"
+    async def _publish_event(self, microcontroller_uuid: UUID, event_type: EventType, payload) -> None:
+        subject = self._subject_for_microcontroller(microcontroller_uuid)
+        ack_subject = self._ack_subject(microcontroller_uuid)
 
         try:
-            ack = await self.events.publish_event_and_wait_for_ack(
+            await self.events.publish_event_and_wait_for_ack(
                 subject=subject,
                 ack_subject=ack_subject,
-                event_type=EventType.DEVICE_COMMAND,
-                payload={"device_id": device_id_val, "command": "SET_STATE", "is_on": bool(state)},
-                predicate=lambda p: p.get("device_id") == device_id_val,
+                event_type=event_type,
+                payload=payload,
+                predicate=lambda p: p.get("device_id") == payload.device_id,
                 timeout=10.0,
             )
-            logging.info(
-                "Manual state set ack received device_id=%s user_id=%s state=%s ack=%s",
-                device_id_val,
-                user_id_val,
-                state,
-                ack,
-            )
-        except Exception as e:
-            logging.error(
-                "Error while setting manual state device_id=%s user_id=%s state=%s error=%s",
-                device_id_val,
-                user_id_val,
-                state,
-                str(e),
-            )
-            raise HTTPException(status_code=504, detail=str(e))
-
-        if not ack.get("ok"):
-            logging.error(
-                "Raspberry failed to set manual state device_id=%s user_id=%s state=%s",
-                device_id_val,
-                user_id_val,
-                state,
-            )
-            raise HTTPException(500, "Raspberry failed to set state")
-
-        updated_device = self.repo.update_for_user(
-            db, device_id_val, user_id_val, {"manual_state": state}
-        )
-        self.logger.info(
-            "Manual state updated device_id=%s user_id=%s state=%s",
-            updated_device.id,
-            user_id_val,
-            state,
-        )
-
-        return {"device_id": updated_device.id, "manual_state": state, "ack": ack}
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+                detail=f"Microcontroller did not acknowledge the {event_type.value} event: {exc}",
+            ) from exc

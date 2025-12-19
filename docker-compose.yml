@@ -1,29 +1,50 @@
-services:
+version: "3.9"
 
-  redis:
-    image: "redis:latest"
-    container_name: smart_energy_redis
-    network_mode: "host"
-    
+services:
   backend:
     build: .
     container_name: smart_energy_backend
-    environment:
-      PORT: ${PORT:-8000}
-    network_mode: "host"
+    network_mode: host
     command: >
-      bash -c "
-        # echo 'Checking database connectivity...';
-        # alembic revision --autogenerate -m 'auto migration' || true;
-        # echo 'Running migrations...';
-        # alembic upgrade head;
-        # echo 'Migrations complete. Starting server...';
-        uvicorn app.main:app --host 0.0.0.0 --port ${PORT}
-      "
-    depends_on:
-      - redis
+      uvicorn app.main:app
+      --host 0.0.0.0
+      --port ${BACKEND_PORT:-8000}
+      --reload
+      --reload-dir /app
     volumes:
       - .:/app
+      - backend_logs:/app/logs
     env_file:
       - .env
-    restart: always
+    restart: unless-stopped
+
+  celery_worker:
+    build: .
+    container_name: smart_energy_celery_worker
+    network_mode: host
+    command: >
+      celery -A app.celery_app worker
+      --loglevel=info
+      --pool=solo
+      --concurrency=1
+      --hostname=worker@%h
+    volumes:
+      - .:/app
+      - celery_logs:/app/logs
+    env_file:
+      - .env
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: smart_energy_redis
+    network_mode: host
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+volumes:
+  backend_logs:
+  celery_logs:
+  redis_data:

@@ -4,17 +4,16 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
 from smart_common.core.db import get_db
+from smart_common.core.dependencies import get_current_user
 from smart_common.models.user import User
 from smart_common.repositories.device import DeviceRepository
 from smart_common.repositories.device_schedule import DeviceScheduleRepository
 from smart_common.repositories.microcontroller import MicrocontrollerRepository
-
-from app.api.schemas.device_schedules import (
+from smart_common.schemas.device_schedules import (
     DeviceScheduleCreateRequest,
     DeviceScheduleResponse,
     DeviceScheduleUpdateRequest,
 )
-from app.core.dependencies import get_current_user
 from app.services.device_schedule_service import DeviceScheduleService
 
 router = APIRouter(

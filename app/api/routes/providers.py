@@ -4,17 +4,16 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from smart_common.core.db import get_db
+from smart_common.core.dependencies import get_current_user
 from smart_common.models.user import User
 from smart_common.repositories.microcontroller import MicrocontrollerRepository
 from smart_common.repositories.provider import ProviderRepository
-
-from app.api.schemas.providers import (
+from smart_common.schemas.providers import (
     ProviderCreateRequest,
     ProviderResponse,
     ProviderStatusRequest,
     ProviderUpdateRequest,
 )
-from app.core.dependencies import get_current_user
 from app.services.provider_service import ProviderService
 
 router = APIRouter(prefix="/installations/{installation_id}/microcontrollers/{microcontroller_uuid}/providers", tags=["Providers"])

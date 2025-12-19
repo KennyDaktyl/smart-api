@@ -1,12 +1,13 @@
-# app/main.py
 import logging
-from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi_cache import FastAPICache
-from fastapi_cache.backends.redis import RedisBackend
-from redis import asyncio as aioredis
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+from smart_common.smart_logging.logger import setup_logging
+from smart_common.core.config import settings
 
 from app.api.routes import (
     auth,
@@ -17,42 +18,30 @@ from app.api.routes import (
     installations,
     microcontrollers,
     providers,
+    users,
 )
 
-from smart-common.config import settings
+# ------------------------------------------------------------------
+# LOGGING INIT (MUST BE FIRST)
+# ------------------------------------------------------------------
 
 setup_logging()
 logger = logging.getLogger(__name__)
+logger.info("Starting Smart Energy Backend application")
 
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-
-    logger.info("Starting Smart Energy Backend...")
-
-    try:
-        redis = aioredis.from_url(f"redis://{settings.REDIS_HOST}:6379")
-        FastAPICache.init(RedisBackend(redis), prefix="smartenergy-cache")
-        logger.info("Redis cache initialized successfully.")
-    except Exception as e:
-        logger.error(f"Failed to initialize Redis cache: {e}")
-
-    nats_module.init_app(app)
-
-    yield
-
-    logger.info("Shutting down Smart Energy Backend...")
-
-    logger.info("Backend shutdown complete.")
-
+# ------------------------------------------------------------------
+# FASTAPI APP
+# ------------------------------------------------------------------
 
 app = FastAPI(
     title="Smart Energy Backend",
     description="Backend system for Smart Energy with NATS and Huawei integration",
     version="1.0.0",
-    lifespan=lifespan,
 )
 
+# ------------------------------------------------------------------
+# MIDDLEWARE
+# ------------------------------------------------------------------
 
 app.add_middleware(
     CORSMiddleware,
@@ -66,6 +55,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ------------------------------------------------------------------
+# ROUTERS
+# ------------------------------------------------------------------
 
 app.include_router(auth.router, prefix="/api")
 app.include_router(installations.router, prefix="/api")
@@ -75,8 +67,86 @@ app.include_router(devices.router, prefix="/api")
 app.include_router(device_auto_config.router, prefix="/api")
 app.include_router(device_schedules.router, prefix="/api")
 app.include_router(device_events.router, prefix="/api")
+app.include_router(users.router, prefix="/api")
 
+# ------------------------------------------------------------------
+# HEALTHCHECK
+# ------------------------------------------------------------------
 
 @app.get("/health", tags=["System"])
 def health_check():
-    return {"status": "ok", "nats_connected": app.state.nats.client.nc is not None}
+    nats_connected = False
+
+    # zabezpieczenie: health nie może wywalać 500
+    try:
+        nats = getattr(app.state, "nats", None)
+        if nats and getattr(nats, "client", None):
+            nats_connected = bool(nats.client.nc)
+    except Exception:
+        logger.warning("Healthcheck: failed to determine NATS connection")
+
+    return {
+        "status": "ok",
+        "nats_connected": nats_connected,
+        "env": settings.ENV,
+    }
+
+# ------------------------------------------------------------------
+# EXCEPTION HANDLERS
+# ------------------------------------------------------------------
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    logger.warning(
+        "Validation error on %s %s | errors=%s",
+        request.method,
+        request.url.path,
+        exc.errors(),
+    )
+    return JSONResponse(
+        status_code=422,
+        content={"detail": exc.errors()},
+    )
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    logger.warning(
+        "HTTPException %s on %s %s | detail=%s",
+        exc.status_code,
+        request.method,
+        request.url.path,
+        exc.detail,
+    )
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
+    )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    logger.exception(
+        "🔥 Unhandled exception on %s %s",
+        request.method,
+        request.url.path,
+    )
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"},
+    )
+
+# ------------------------------------------------------------------
+# LOCAL RUN
+# ------------------------------------------------------------------
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(
+        "app.main:app",
+        host="127.0.0.1",
+        port=settings.BACKEND_PORT,
+        reload=True,
+        log_level="info",
+    )

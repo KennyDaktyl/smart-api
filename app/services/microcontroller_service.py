@@ -46,22 +46,21 @@ class MicrocontrollerService:
         )
 
     def register_microcontroller(
-        self, db: Session, user_id: int, installation_id: int, payload: dict
+        self,
+        db: Session,
+        user_id: int,
+        installation_id: int,
+        payload: dict,
     ) -> Microcontroller:
         installation = self._ensure_installation(db, user_id, installation_id)
-        microcontroller = Microcontroller(installation_id=installation.id, **payload)
-        self._repo(db).create(microcontroller)
-        db.commit()
-        db.refresh(microcontroller)
-        return microcontroller
 
-    def get_owned(self, db: Session, user_id: int, uuid: UUID) -> Microcontroller:
-        microcontroller = self._repo(db).get_for_user_by_uuid(uuid, user_id)
-        if not microcontroller:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Microcontroller not found"
-            )
-        return microcontroller
+        data = {
+            **payload,
+            "installation_id": installation.id,
+        }
+
+        return self._repo(db).create(data)
+
 
     def update(
         self, db: Session, user_id: int, uuid: UUID, payload: dict

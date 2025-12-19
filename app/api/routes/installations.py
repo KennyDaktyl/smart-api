@@ -2,11 +2,10 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from smart_common.core.db import get_db
+from smart_common.core.dependencies import get_current_user
 from smart_common.models.user import User
 from smart_common.repositories.installation import InstallationRepository
-
-from app.api.schemas.installations import InstallationCreateRequest, InstallationResponse
-from app.core.dependencies import get_current_user
+from smart_common.schemas.installations import InstallationCreateRequest, InstallationResponse
 from app.services.installation_service import InstallationService
 
 router = APIRouter(prefix="/installations", tags=["Installations"])

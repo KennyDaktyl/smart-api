@@ -5,11 +5,11 @@ from uuid import UUID
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.core.db import transactional_session
+from smart_common.core.db import transactional_session
 from smart_common.enums.event import EventType
 from smart_common.events.device_events import (
     DeviceCreatedPayload,
-    DeviceDeletedPayload,
+    DeviceDeletePayload,
     DeviceUpdatedPayload,
 )
 from smart_common.events.event_dispatcher import EventDispatcher
@@ -119,7 +119,7 @@ class DeviceService:
             await self._publish_event(
                 microcontroller_uuid=device.microcontroller.uuid,
                 event_type=EventType.DEVICE_DELETED,
-                payload=DeviceDeletedPayload(device_id=device.id),
+                payload=DeviceDeletePayload(device_id=device.id),
             )
 
             self._repo(db).delete(device)

@@ -30,9 +30,7 @@ def send_confirmation_email_task(self, email: str, token: str) -> None:
     retry_backoff=True,
 )
 def send_password_reset_email_task(self, email: str, token: str) -> None:
-    reset_link = (
-        f"{settings.FRONTEND_URL.rstrip('/')}/reset-password?token={token}"
-    )
+    reset_link = f"{settings.FRONTEND_URL.rstrip('/')}/reset-password?token={token}"
 
     send_email(
         recipient=email,

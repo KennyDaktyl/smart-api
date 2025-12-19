@@ -9,12 +9,10 @@ from smart_common.models.user import User
 from smart_common.repositories.device import DeviceRepository
 from smart_common.repositories.device_schedule import DeviceScheduleRepository
 from smart_common.repositories.microcontroller import MicrocontrollerRepository
-from smart_common.schemas.device_schedules import (
-    DeviceScheduleCreateRequest,
-    DeviceScheduleResponse,
-    DeviceScheduleUpdateRequest,
-)
-from app.services.device_schedule_service import DeviceScheduleService
+from smart_common.schemas.device_schedules import (DeviceScheduleCreateRequest,
+                                                   DeviceScheduleResponse,
+                                                   DeviceScheduleUpdateRequest)
+from smart_common.services.device_schedule_service import DeviceScheduleService
 
 router = APIRouter(
     prefix="/installations/{installation_id}/microcontrollers/{microcontroller_uuid}/devices/{device_id}/schedules",
@@ -36,7 +34,9 @@ def _validate_microcontroller(
     repo = MicrocontrollerRepository(db)
     microcontroller = repo.get_for_user_by_uuid(microcontroller_uuid, user_id)
     if not microcontroller or microcontroller.installation_id != installation_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Microcontroller not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Microcontroller not found"
+        )
     return microcontroller
 
 
@@ -57,9 +57,7 @@ def list_schedules(
     microcontroller = _validate_microcontroller(
         db, installation_id, microcontroller_uuid, current_user.id
     )
-    return service.list_for_device(
-        db, current_user.id, device_id, microcontroller.id
-    )
+    return service.list_for_device(db, current_user.id, device_id, microcontroller.id)
 
 
 @router.post(
@@ -80,9 +78,7 @@ def create_schedule(
     microcontroller = _validate_microcontroller(
         db, installation_id, microcontroller_uuid, current_user.id
     )
-    return service.create_schedule(
-        db, current_user.id, microcontroller.id, payload.model_dump()
-    )
+    return service.create_schedule(db, current_user.id, microcontroller.id, payload.model_dump())
 
 
 @router.put(

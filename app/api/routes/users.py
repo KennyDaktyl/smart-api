@@ -2,27 +2,15 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from smart_common.core.db import get_db
-from smart_common.core.dependencies import (
-    get_current_active_user,
-    require_role,
-)
+from smart_common.core.dependencies import get_current_active_user, require_role
 from smart_common.enums.user import UserRole
 from smart_common.models.user import User
 from smart_common.repositories.user import UserRepository
 from smart_common.schemas.installations import InstallationResponse
-from smart_common.schemas.pagination_schema import (
-    PaginatedResponse,
-    PaginationMeta,
-)
+from smart_common.schemas.pagination_schema import PaginatedResponse, PaginationMeta
 from smart_common.schemas.user_profile_schema import UserProfileResponse, UserProfileUpdate
-from smart_common.schemas.user_schema import (
-    AdminUserUpdate,
-    MessageResponse,
-    UserDetailsResponse,
-    UserListQuery,
-    UserResponse,
-    UserUpdate,
-)
+from smart_common.schemas.user_schema import (AdminUserUpdate, MessageResponse, UserDetailsResponse,
+                                              UserListQuery, UserResponse, UserUpdate)
 
 router = APIRouter(prefix="/users", tags=["Users"])
 
@@ -30,6 +18,7 @@ router = APIRouter(prefix="/users", tags=["Users"])
 # ======================================================
 # ADMIN
 # ======================================================
+
 
 @router.get(
     "/list",
@@ -66,6 +55,7 @@ def list_users(
         ),
         items=[UserResponse.model_validate(u) for u in users],
     )
+
 
 @router.get(
     "/me/details",
@@ -108,6 +98,7 @@ def get_user_details_by_id(
 # AUTHENTICATED USER (ME)
 # ======================================================
 
+
 @router.get(
     "/me",
     response_model=UserResponse,
@@ -139,10 +130,7 @@ def get_my_installations(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    return [
-        InstallationResponse.model_validate(inst)
-        for inst in user.installations
-    ]
+    return [InstallationResponse.model_validate(inst) for inst in user.installations]
 
 
 @router.get(
@@ -158,10 +146,7 @@ def get_my_profile(
     user = repo.get_with_profile(current_user.id)
 
     if not user or not user.profile:
-         raise HTTPException(
-            status_code=404,
-            detail="User profile not found"
-        )
+        raise HTTPException(status_code=404, detail="User profile not found")
 
     return UserProfileResponse.model_validate(user.profile)
 
@@ -252,4 +237,3 @@ def update_me(
     )
 
     return UserResponse.model_validate(user)
-

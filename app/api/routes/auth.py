@@ -4,20 +4,14 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from smart_common.core.db import get_db
+from smart_common.core.dependencies import get_current_user
 from smart_common.models.user import User
 from smart_common.repositories.user import UserRepository
-from smart_common.schemas.auth import (
-    CurrentUserResponse,
-    EmailTokenRequest,
-    LoginRequest,
-    MessageResponse,
-    PasswordResetConfirm,
-    PasswordResetRequest,
-    TokenResponse,
-)
+from smart_common.schemas.auth import (CurrentUserResponse, EmailTokenRequest, LoginRequest,
+                                       MessageResponse, PasswordResetConfirm, PasswordResetRequest,
+                                       TokenResponse)
 from smart_common.schemas.user_schema import UserCreate, UserResponse
-from smart_common.core.dependencies import get_current_user
-from app.services.auth_service import AuthService
+from smart_common.services.auth_service import AuthService
 
 logger = logging.getLogger(__name__)
 
@@ -91,9 +85,7 @@ def request_password_reset(
 ) -> MessageResponse:
     _get_auth_service(db).request_password_reset(payload.email)
 
-    return MessageResponse(
-        message="If an account exists, password reset email has been sent"
-    )
+    return MessageResponse(message="If an account exists, password reset email has been sent")
 
 
 @router.post(

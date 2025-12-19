@@ -8,15 +8,14 @@ from smart_common.core.dependencies import get_current_user
 from smart_common.models.user import User
 from smart_common.repositories.microcontroller import MicrocontrollerRepository
 from smart_common.repositories.provider import ProviderRepository
-from smart_common.schemas.providers import (
-    ProviderCreateRequest,
-    ProviderResponse,
-    ProviderStatusRequest,
-    ProviderUpdateRequest,
-)
-from app.services.provider_service import ProviderService
+from smart_common.schemas.providers import (ProviderCreateRequest, ProviderResponse,
+                                            ProviderStatusRequest, ProviderUpdateRequest)
+from smart_common.services.provider_service import ProviderService
 
-router = APIRouter(prefix="/installations/{installation_id}/microcontrollers/{microcontroller_uuid}/providers", tags=["Providers"])
+router = APIRouter(
+    prefix="/installations/{installation_id}/microcontrollers/{microcontroller_uuid}/providers",
+    tags=["Providers"],
+)
 
 provider_service = ProviderService(
     lambda db: ProviderRepository(db),
@@ -33,7 +32,9 @@ def _validate_microcontroller(
     repo = MicrocontrollerRepository(db)
     microcontroller = repo.get_for_user_by_uuid(microcontroller_uuid, user_id)
     if not microcontroller or microcontroller.installation_id != installation_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Microcontroller not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Microcontroller not found"
+        )
     return microcontroller
 
 
@@ -87,7 +88,9 @@ def update_provider(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> ProviderResponse:
-    microcontroller = _validate_microcontroller(db, installation_id, microcontroller_uuid, current_user.id)
+    microcontroller = _validate_microcontroller(
+        db, installation_id, microcontroller_uuid, current_user.id
+    )
     provider = provider_service.get_provider(db, current_user.id, provider_id)
     if provider.microcontroller_id != microcontroller.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Provider not found")
@@ -112,7 +115,9 @@ def set_provider_status(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> ProviderResponse:
-    microcontroller = _validate_microcontroller(db, installation_id, microcontroller_uuid, current_user.id)
+    microcontroller = _validate_microcontroller(
+        db, installation_id, microcontroller_uuid, current_user.id
+    )
     provider = provider_service.get_provider(db, current_user.id, provider_id)
     if provider.microcontroller_id != microcontroller.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Provider not found")

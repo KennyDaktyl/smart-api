@@ -1,25 +1,15 @@
 import logging
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from smart_common.smart_logging.logger import setup_logging
+from app.api.routes import (auth, device_auto_config, device_events, device_schedules, devices,
+                            installations, microcontrollers, provider_definitions, providers, users)
 from smart_common.core.config import settings
-
-from app.api.routes import (
-    auth,
-    device_auto_config,
-    device_events,
-    device_schedules,
-    devices,
-    installations,
-    microcontrollers,
-    providers,
-    users,
-)
+from smart_common.smart_logging.logger import setup_logging
 
 # ------------------------------------------------------------------
 # LOGGING INIT (MUST BE FIRST)
@@ -68,10 +58,12 @@ app.include_router(device_auto_config.router, prefix="/api")
 app.include_router(device_schedules.router, prefix="/api")
 app.include_router(device_events.router, prefix="/api")
 app.include_router(users.router, prefix="/api")
+app.include_router(provider_definitions.router, prefix="/api")
 
 # ------------------------------------------------------------------
 # HEALTHCHECK
 # ------------------------------------------------------------------
+
 
 @app.get("/health", tags=["System"])
 def health_check():
@@ -91,9 +83,11 @@ def health_check():
         "env": settings.ENV,
     }
 
+
 # ------------------------------------------------------------------
 # EXCEPTION HANDLERS
 # ------------------------------------------------------------------
+
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
@@ -135,6 +129,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
         status_code=500,
         content={"detail": "Internal server error"},
     )
+
 
 # ------------------------------------------------------------------
 # LOCAL RUN

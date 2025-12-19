@@ -10,12 +10,10 @@ from smart_common.repositories.device import DeviceRepository
 from smart_common.repositories.device_auto_config import DeviceAutoConfigRepository
 from smart_common.repositories.microcontroller import MicrocontrollerRepository
 from smart_common.repositories.provider import ProviderRepository
-from smart_common.schemas.device_auto_config import (
-    DeviceAutoConfigRequest,
-    DeviceAutoConfigResponse,
-    DeviceAutoConfigStatusRequest,
-)
-from app.services.device_auto_config_service import DeviceAutoConfigService
+from smart_common.schemas.device_auto_config import (DeviceAutoConfigRequest,
+                                                     DeviceAutoConfigResponse,
+                                                     DeviceAutoConfigStatusRequest)
+from smart_common.services.device_auto_config_service import DeviceAutoConfigService
 
 router = APIRouter(
     prefix="/installations/{installation_id}/microcontrollers/{microcontroller_uuid}/devices/{device_id}/auto-config",
@@ -133,6 +131,4 @@ def set_auto_config_status(
     microcontroller = _validate_microcontroller(
         db, installation_id, microcontroller_uuid, current_user.id
     )
-    return service.set_enabled(
-        db, current_user.id, device_id, microcontroller.id, payload.enabled
-    )
+    return service.set_enabled(db, current_user.id, device_id, microcontroller.id, payload.enabled)

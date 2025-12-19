@@ -8,15 +8,15 @@ from smart_common.core.dependencies import get_current_user
 from smart_common.models.user import User
 from smart_common.repositories.installation import InstallationRepository
 from smart_common.repositories.microcontroller import MicrocontrollerRepository
-from smart_common.schemas.microcontrollers import (
-    MicrocontrollerCreateRequest,
-    MicrocontrollerResponse,
-    MicrocontrollerStatusRequest,
-    MicrocontrollerUpdateRequest,
-)
-from app.services.microcontroller_service import MicrocontrollerService
+from smart_common.schemas.microcontrollers import (MicrocontrollerCreateRequest,
+                                                   MicrocontrollerResponse,
+                                                   MicrocontrollerStatusRequest,
+                                                   MicrocontrollerUpdateRequest)
+from smart_common.services.microcontroller_service import MicrocontrollerService
 
-router = APIRouter(prefix="/installations/{installation_id}/microcontrollers", tags=["Microcontrollers"])
+router = APIRouter(
+    prefix="/installations/{installation_id}/microcontrollers", tags=["Microcontrollers"]
+)
 
 microcontroller_service = MicrocontrollerService(
     lambda db: MicrocontrollerRepository(db),
@@ -26,7 +26,9 @@ microcontroller_service = MicrocontrollerService(
 
 def _ensure_installation_matches(installation_id: int, microcontroller) -> None:
     if microcontroller.installation_id != installation_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Microcontroller not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Microcontroller not found"
+        )
 
 
 @router.get(

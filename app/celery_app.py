@@ -1,4 +1,5 @@
 from celery import Celery
+
 from smart_common.core.config import settings
 
 celery_app = Celery(

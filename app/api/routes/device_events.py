@@ -12,7 +12,7 @@ from smart_common.repositories.device import DeviceRepository
 from smart_common.repositories.device_event import DeviceEventRepository
 from smart_common.repositories.microcontroller import MicrocontrollerRepository
 from smart_common.schemas.device_events import DeviceEventTimelineResponse
-from app.services.device_event_service import DeviceEventService
+from smart_common.services.device_event_service import DeviceEventService
 
 router = APIRouter(
     prefix="/installations/{installation_id}/microcontrollers/{microcontroller_uuid}/devices/{device_id}/events",
@@ -34,7 +34,9 @@ def _validate_microcontroller(
     repo = MicrocontrollerRepository(db)
     microcontroller = repo.get_for_user_by_uuid(microcontroller_uuid, user_id)
     if not microcontroller or microcontroller.installation_id != installation_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Microcontroller not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Microcontroller not found"
+        )
     return microcontroller
 
 

@@ -1,13 +1,19 @@
 import logging
 
 from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.api.routes import (auth, device_auto_config, device_events, device_schedules, devices,
-                            installations, microcontrollers, provider_definitions, providers, users)
+from app.api.routes.provider_definitions import provider_definition_router
+from app.api.routes.providers import provider_router
+from app.api.routes.users import user_router, password_router
+from app.api.routes.auth import auth_router
+from app.api.routes.enums import enums_router
+from app.api.routes.provider_wizard import wizard_router
+from app.api.routes.admin import microcontrollers, users
 from smart_common.core.config import settings
 from smart_common.smart_logging.logger import setup_logging
 
@@ -49,17 +55,15 @@ app.add_middleware(
 # ROUTERS
 # ------------------------------------------------------------------
 
-app.include_router(auth.router, prefix="/api")
-app.include_router(installations.router, prefix="/api")
-app.include_router(microcontrollers.router, prefix="/api")
-app.include_router(providers.router, prefix="/api")
-app.include_router(devices.router, prefix="/api")
-app.include_router(device_auto_config.router, prefix="/api")
-app.include_router(device_schedules.router, prefix="/api")
-app.include_router(device_events.router, prefix="/api")
-app.include_router(users.router, prefix="/api")
-app.include_router(provider_definitions.router, prefix="/api")
-
+app.include_router(auth_router, prefix="/api")
+app.include_router(user_router, prefix="/api")
+app.include_router(password_router, prefix="/api")
+app.include_router(users.admin_router, prefix="/api")
+app.include_router(microcontrollers.admin_router, prefix="/api")
+app.include_router(provider_definition_router, prefix="/api")
+app.include_router(provider_router, prefix="/api")
+app.include_router(enums_router, prefix="/api")
+app.include_router(wizard_router, prefix="/api")
 # ------------------------------------------------------------------
 # HEALTHCHECK
 # ------------------------------------------------------------------
@@ -99,7 +103,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     )
     return JSONResponse(
         status_code=422,
-        content={"detail": exc.errors()},
+        content=jsonable_encoder({"detail": exc.errors()}),
     )
 
 

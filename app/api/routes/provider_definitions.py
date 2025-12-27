@@ -10,14 +10,14 @@ from smart_common.schemas.provider_definitions_schema import (
 )
 from smart_common.providers.enums import ProviderType
 
-router = APIRouter(
+provider_definition_router = APIRouter(
     prefix="/providers/definitions",
     tags=["Provider Definitions"],
 )
 
 
-@router.get(
-    "/",
+@provider_definition_router.get(
+    "/list",
     response_model=ProviderDefinitionsResponse,
     summary="List available provider types and vendors",
 )
@@ -48,12 +48,7 @@ def list_provider_definitions():
     return ProviderDefinitionsResponse(provider_types=provider_types)
 
 
-# ---------------------------------------
-# GET /providers/definitions/{vendor}
-# ---------------------------------------
-
-
-@router.get(
+@provider_definition_router.get(
     "/{vendor}",
     response_model=ProviderDefinitionDetail,
     summary="Get provider definition and config schema",
@@ -74,7 +69,7 @@ def get_provider_definition(vendor: ProviderVendor):
     )
 
 
-@router.get("/{vendor}/config")
+@provider_definition_router.get("/{vendor}/config")
 def get_provider_config(vendor: ProviderVendor):
     meta = PROVIDER_DEFINITIONS.get(vendor)
     if not meta:

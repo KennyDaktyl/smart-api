@@ -4,25 +4,28 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from smart_common.core.db import get_db
-from smart_common.core.dependencies import get_current_user
-from smart_common.models.user import User
 from smart_common.repositories.user import UserRepository
-from smart_common.schemas.auth import (CurrentUserResponse, EmailTokenRequest, LoginRequest,
-                                       MessageResponse, PasswordResetConfirm, PasswordResetRequest,
-                                       TokenResponse)
+from smart_common.schemas.auth import (
+    EmailTokenRequest,
+    LoginRequest,
+    MessageResponse,
+    PasswordResetConfirm,
+    PasswordResetRequest,
+    TokenResponse,
+)
 from smart_common.schemas.user_schema import UserCreate, UserResponse
 from smart_common.services.auth_service import AuthService
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/auth", tags=["Auth"])
+auth_router = APIRouter(prefix="/auth", tags=["Auth"])
 
 
 def _get_auth_service(db: Session) -> AuthService:
     return AuthService(UserRepository(db))
 
 
-@router.post(
+@auth_router.post(
     "/login",
     response_model=TokenResponse,
     status_code=200,
@@ -31,10 +34,11 @@ def _get_auth_service(db: Session) -> AuthService:
 )
 def login(payload: LoginRequest, db: Session = Depends(get_db)) -> TokenResponse:
     access, refresh = _get_auth_service(db).login(payload.email, payload.password)
+    logger.info("User logged in email=%s", payload.email)
     return TokenResponse(access_token=access, refresh_token=refresh)
 
 
-@router.post(
+@auth_router.post(
     "/register",
     response_model=UserResponse,
     status_code=201,
@@ -47,18 +51,21 @@ def register(payload: UserCreate, db: Session = Depends(get_db)) -> UserResponse
     return UserResponse.model_validate(user)
 
 
-@router.post(
+@auth_router.post(
     "/confirm",
     response_model=MessageResponse,
     summary="Confirm email address",
     description="Activates the user account once the email token is verified.",
 )
-def confirm_email(payload: EmailTokenRequest, db: Session = Depends(get_db)) -> MessageResponse:
+def confirm_email(
+    payload: EmailTokenRequest, db: Session = Depends(get_db)
+) -> MessageResponse:
     _get_auth_service(db).confirm_email(payload.token)
+    logger.info("Email confirmation processed")
     return MessageResponse(message="Email confirmed successfully", token=payload.token)
 
 
-@router.post(
+@auth_router.post(
     "/refresh",
     response_model=TokenResponse,
     status_code=200,
@@ -72,23 +79,27 @@ def refresh_token(
 ) -> TokenResponse:
     refresh_token = refresh_token_body or refresh_token_query
     if not refresh_token:
-        raise HTTPException(status_code=400, detail="Refresh token is required")
+        raise HTTPException(status_code=401, detail="Refresh token is required")
 
+    logger.info("Refresh token rotation requested")
     access, refresh = _get_auth_service(db).refresh(refresh_token)
     return TokenResponse(access_token=access, refresh_token=refresh)
 
 
-@router.post("/password-reset/request", response_model=MessageResponse)
+@auth_router.post("/password-reset/request", response_model=MessageResponse)
 def request_password_reset(
     payload: PasswordResetRequest,
     db: Session = Depends(get_db),
 ) -> MessageResponse:
+    logger.info("Password reset requested for email=%s", payload.email)
     _get_auth_service(db).request_password_reset(payload.email)
 
-    return MessageResponse(message="If an account exists, password reset email has been sent")
+    return MessageResponse(
+        message="If an account exists, password reset email has been sent"
+    )
 
 
-@router.post(
+@auth_router.post(
     "/password-reset/confirm",
     response_model=MessageResponse,
     summary="Confirm password reset",
@@ -98,15 +109,5 @@ def confirm_password_reset(
     payload: PasswordResetConfirm, db: Session = Depends(get_db)
 ) -> MessageResponse:
     _get_auth_service(db).reset_password(payload.token, payload.new_password)
+    logger.info("Password reset confirmed")
     return MessageResponse(message="Password has been updated")
-
-
-@router.get(
-    "/me",
-    response_model=CurrentUserResponse,
-    status_code=200,
-    summary="Get current user",
-    description="Returns the authenticated user's profile, including assigned role and activity status.",
-)
-def current_user(current_user: User = Depends(get_current_user)) -> CurrentUserResponse:
-    return CurrentUserResponse.model_validate(current_user)

@@ -3,10 +3,10 @@ from __future__ import annotations
 import logging
 from fastapi import APIRouter, Body, HTTPException
 
+from smart_common.providers.definitions.registry import PROVIDER_DEFINITION_REGISTRY
 from smart_common.providers.enums import ProviderType, ProviderVendor
 from smart_common.providers.exceptions import ProviderError
-from smart_common.providers.registry import PROVIDER_DEFINITIONS
-from smart_common.providers.wizard.engine import WizardEngine
+from smart_common.providers.services.wizard_service import WizardService
 from smart_common.providers.wizard.exceptions import (
     WizardNotConfiguredError,
     WizardResultError,
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 wizard_router = APIRouter(prefix="/providers/wizard", tags=["Provider Wizard"])
 
-wizard_engine = WizardEngine(PROVIDER_DEFINITIONS)
+wizard_service = WizardService(definitions=PROVIDER_DEFINITION_REGISTRY)
 
 
 @wizard_router.get(
@@ -30,28 +30,32 @@ wizard_engine = WizardEngine(PROVIDER_DEFINITIONS)
     summary="Start provider wizard (get first step)",
 )
 def get_wizard_start(vendor: ProviderVendor) -> WizardRuntimeResponse:
-    meta = PROVIDER_DEFINITIONS.get(vendor)
+    definition = PROVIDER_DEFINITION_REGISTRY.get(vendor)
     if (
-        not meta
-        or meta.get("provider_type") != ProviderType.API
-        or not meta.get("wizard")
+        not definition
+        or definition.provider_type != ProviderType.API
+        or not definition.requires_wizard
     ):
         raise HTTPException(status_code=404, detail="Wizard not available")
 
-    wizard = meta["wizard"]
+    try:
+        step_name, schema = wizard_service.get_initial_step(vendor)
+    except WizardNotConfiguredError:
+        raise HTTPException(
+            status_code=500,
+            detail="Wizard configuration is invalid",
+        )
 
-    if "auth" not in wizard:
+    if step_name != "auth":
         raise HTTPException(
             status_code=500,
             detail="Wizard must define 'auth' as the first step",
         )
 
-    auth_step = wizard["auth"]
-
     return WizardRuntimeResponse(
         vendor=vendor,
-        step="auth",
-        schema=auth_step.schema.model_json_schema(),
+        step=step_name,
+        schema=schema.model_json_schema(),
         options={},
         context={},
         is_complete=False,
@@ -69,11 +73,11 @@ def run_wizard_step(
     step: str,
     payload: dict = Body(...),
 ) -> WizardRuntimeResponse:
-    meta = PROVIDER_DEFINITIONS.get(vendor)
+    definition = PROVIDER_DEFINITION_REGISTRY.get(vendor)
     if (
-        not meta
-        or meta.get("provider_type") != ProviderType.API
-        or not meta.get("wizard")
+        not definition
+        or definition.provider_type != ProviderType.API
+        or not definition.requires_wizard
     ):
         raise HTTPException(status_code=404, detail="Wizard not available")
 
@@ -85,17 +89,20 @@ def run_wizard_step(
     payload_data = dict(payload)
     context = payload_data.pop("context", {}) or {}
 
+    step_payload = payload_data.get("payload") or payload_data
+    if "payload" in payload_data:
+        step_payload = payload_data.pop("payload")
+
+    step_payload.pop("wizard_session_id", None)
+
     try:
-        result = wizard_engine.run_step(
+        result = wizard_service.run_step(
             vendor=vendor,
             step_name=step,
-            payload=payload_data,
+            payload=step_payload,
             context=context,
         )
         return WizardRuntimeResponse(**result)
-    # -----------------------------
-    # PROVIDER / ADAPTER ERRORS
-    # -----------------------------
     except ProviderError as exc:
         logger.warning(
             "Provider error during wizard",
@@ -111,14 +118,14 @@ def run_wizard_step(
         if status_code == 401:
             status_code = 400
 
-            raise HTTPException(
-                status_code=status_code,
-                detail={
-                    "message": exc.message,
-                    "code": exc.code,
-                    "details": exc.details,
-                },
-            )
+        raise HTTPException(
+            status_code=status_code,
+            detail={
+                "message": exc.message,
+                "code": exc.code,
+                "details": exc.details,
+            },
+        )
 
     except HTTPException as exc:
         raise exc

@@ -1,12 +1,16 @@
-from fastapi import APIRouter
+import logging
+from fastapi import APIRouter, Depends, HTTPException
 from smart_common.core.db import get_db
 from smart_common.core.dependencies import get_current_user
 from smart_common.models.user import User
+from smart_common.providers.wizard.exceptions import WizardSessionExpiredError
 from smart_common.repositories.provider import ProviderRepository
 from smart_common.schemas.provider_schema import ProviderCreateRequest, ProviderResponse
+from smart_common.services.provider_service import ProviderService
 
 from sqlalchemy.orm import Session
-from fastapi import Depends
+
+logger = logging.getLogger(__name__)
 
 provider_router = APIRouter(
     prefix="/providers",
@@ -43,10 +47,30 @@ def create_provider(
     current_user: User = Depends(get_current_user),
 ) -> ProviderResponse:
 
-    provider_repository = ProviderRepository()
-    provider = provider_repository.create(
-        db=db,
-        obj_in=payload,
-        user_id=current_user.id,
+    logger.info("Creating user provider", extra={"payload": payload})
+
+    provider_service = ProviderService(
+        provider_repo_factory=lambda session: ProviderRepository(session),
+        microcontroller_repo_factory=None,
     )
+
+    payload_dict = payload.model_dump(exclude={"wizard_session_id", "config"})
+
+    if payload.wizard_session_id:
+        try:
+            provider = provider_service.create_provider_from_wizard(
+                db=db,
+                user_id=current_user.id,
+                wizard_session_id=payload.wizard_session_id,
+                payload=payload_dict,
+            )
+        except WizardSessionExpiredError as exc:
+            raise HTTPException(status_code=410, detail=str(exc))
+    else:
+        provider = provider_service.create_for_user(
+            db=db,
+            user_id=current_user.id,
+            payload=payload_dict,
+        )
+
     return provider

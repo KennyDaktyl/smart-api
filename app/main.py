@@ -1,5 +1,8 @@
-import logging
+from smart_common.smart_logging.logger import setup_logging
 
+setup_logging()
+
+import logging
 from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
@@ -15,13 +18,11 @@ from app.api.routes.enums import enums_router
 from app.api.routes.provider_wizard import wizard_router
 from app.api.routes.admin import microcontrollers, users
 from smart_common.core.config import settings
-from smart_common.smart_logging.logger import setup_logging
 
 # ------------------------------------------------------------------
 # LOGGING INIT (MUST BE FIRST)
 # ------------------------------------------------------------------
 
-setup_logging()
 logger = logging.getLogger(__name__)
 logger.info("Starting Smart Energy Backend application")
 

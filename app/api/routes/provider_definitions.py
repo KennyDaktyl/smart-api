@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 
+from smart_common.providers.definitions.registry import PROVIDER_DEFINITION_REGISTRY
 from smart_common.providers.enums import ProviderVendor
-from smart_common.providers.registry import PROVIDER_DEFINITIONS
 from smart_common.schemas.provider_definitions_schema import (
     ProviderDefinitionDetail,
     ProviderDefinitionsResponse,
@@ -27,16 +27,16 @@ def list_provider_definitions():
         list[ProviderVendorSummary],
     ] = {}
 
-    for vendor, meta in PROVIDER_DEFINITIONS.items():
-        ptype = meta["provider_type"]
+    for vendor, definition in PROVIDER_DEFINITION_REGISTRY.items():
+        ptype = definition.provider_type
 
         grouped.setdefault(ptype, []).append(
             ProviderVendorSummary(
                 vendor=vendor,
-                label=meta["label"],
-                kind=meta["kind"],
-                default_unit=meta["default_unit"],
-                requires_wizard=meta["requires_wizard"],
+                label=definition.label,
+                kind=definition.kind,
+                default_unit=definition.default_unit,
+                requires_wizard=definition.requires_wizard,
             )
         )
 
@@ -54,32 +54,32 @@ def list_provider_definitions():
     summary="Get provider definition and config schema",
 )
 def get_provider_definition(vendor: ProviderVendor):
-    meta = PROVIDER_DEFINITIONS.get(vendor)
-    if not meta:
+    definition = PROVIDER_DEFINITION_REGISTRY.get(vendor)
+    if not definition:
         raise HTTPException(status_code=404, detail="Unknown provider vendor")
 
     return ProviderDefinitionDetail(
         vendor=vendor,
-        label=meta["label"],
-        provider_type=meta["provider_type"],
-        kind=meta["kind"],
-        default_unit=meta["default_unit"],
-        requires_wizard=meta["requires_wizard"],
-        config_schema=meta["config_schema"].model_json_schema(),
+        label=definition.label,
+        provider_type=definition.provider_type,
+        kind=definition.kind,
+        default_unit=definition.default_unit,
+        requires_wizard=definition.requires_wizard,
+        config_schema=definition.config_schema.model_json_schema(),
     )
 
 
 @provider_definition_router.get("/{vendor}/config")
 def get_provider_config(vendor: ProviderVendor):
-    meta = PROVIDER_DEFINITIONS.get(vendor)
-    if not meta:
+    definition = PROVIDER_DEFINITION_REGISTRY.get(vendor)
+    if not definition:
         raise HTTPException(status_code=404, detail="Unknown provider vendor")
 
-    config_schema_cls = meta["config_schema"]
+    config_schema_cls = definition.config_schema
 
     return {
         "vendor": vendor.value,
-        "label": meta["label"],
-        "requires_wizard": meta["requires_wizard"],
+        "label": definition.label,
+        "requires_wizard": definition.requires_wizard,
         "config_schema": config_schema_cls.model_json_schema(),
     }

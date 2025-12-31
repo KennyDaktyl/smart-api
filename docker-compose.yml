@@ -13,7 +13,7 @@ services:
       --reload-dir /app
     volumes:
       - .:/app
-      - backend_logs:/app/logs
+      - ./logs:/app/logs
     env_file:
       - .env
     restart: unless-stopped

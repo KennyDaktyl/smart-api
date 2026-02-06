@@ -52,8 +52,7 @@ def create_device_event(
         },
     )
 
-    device_repo = DeviceRepository(db)
-    device = device_repo.get_for_user_by_id(
+    device = DeviceRepository(db).get_for_user_by_id(
         device_id=payload.device_id,
         user_id=current_user.id,
     )
@@ -64,13 +63,9 @@ def create_device_event(
             detail="Device not found",
         )
 
-    event_repo = DeviceEventRepository(db)
-    event = event_repo.create(**payload.model_dump(exclude_unset=True))
+    event = DeviceEventRepository(db).create(**payload.model_dump(exclude_unset=True))
 
-    return DeviceEventOut.model_validate(
-        event,
-        from_attributes=True,
-    )
+    return DeviceEventOut.model_validate(event, from_attributes=True)
 
 
 @device_events_router.post(
@@ -93,6 +88,20 @@ def create_device_event_from_agent(
             "event_name": payload.event_name.value,
         },
     )
+
+    device = (
+        db.query(DeviceRepository(db).model).filter_by(id=payload.device_id).first()
+    )
+
+    if not device:
+        logger.warning(
+            "Agent sent event for unknown device",
+            extra={"device_id": payload.device_id, "agent": agent["name"]},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Device not found",
+        )
 
     event = DeviceEventRepository(db).create(
         **payload.model_dump(exclude_unset=True),

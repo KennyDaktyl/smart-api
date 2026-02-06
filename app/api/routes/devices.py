@@ -220,16 +220,9 @@ async def set_device_manual_state(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    logger.info(
-        "SET MANUAL STATE | device_id=%s user_id=%s state=%s",
-        device_id,
-        current_user.id,
-        payload.state,
-    )
-
     service = DeviceService(DeviceRepository, MicrocontrollerRepository)
 
-    device, ack = await service.set_manual_state(
+    device_dto, ack = await service.set_manual_state(
         db=db,
         user_id=current_user.id,
         device_id=device_id,
@@ -239,20 +232,20 @@ async def set_device_manual_state(
     if ack:
         logger.info(
             "SET MANUAL STATE ACK | device_id=%s state=%s",
-            device.id,
+            device_dto.id,
             payload.state,
         )
     else:
         logger.warning(
             "SET MANUAL STATE NO ACK | device_id=%s state=%s",
-            device.id,
+            device_dto.id,
             payload.state,
         )
 
     return DeviceManualStateResponse(
         status="OK" if ack else "NOK",
         message=None if ack else "Microcontroller did not acknowledge command",
-        device=DeviceResponse.model_validate(device, from_attributes=True),
+        device=device_dto,
     )
 
 

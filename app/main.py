@@ -17,6 +17,11 @@ from app.api.routes.auth import auth_router
 from app.api.routes.enums import enums_router
 from app.api.routes.provider_wizard import wizard_router
 from app.api.routes.admin import microcontrollers, users
+from app.api.routes.microcontrollers import microcontroller_router
+from app.api.routes.devices import device_router
+from app.api.routes.device_events import device_events_router
+from app.api.routes.provider_measurements import provider_measurements_router
+
 from smart_common.core.config import settings
 
 # ------------------------------------------------------------------
@@ -65,6 +70,10 @@ app.include_router(provider_definition_router, prefix="/api")
 app.include_router(provider_router, prefix="/api")
 app.include_router(enums_router, prefix="/api")
 app.include_router(wizard_router, prefix="/api")
+app.include_router(microcontroller_router, prefix="/api")
+app.include_router(device_router, prefix="/api")
+app.include_router(device_events_router, prefix="/api")
+app.include_router(provider_measurements_router, prefix="/api")
 # ------------------------------------------------------------------
 # HEALTHCHECK
 # ------------------------------------------------------------------

@@ -1,11 +1,17 @@
 import logging
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException
 from smart_common.core.db import get_db
 from smart_common.core.dependencies import get_current_user
 from smart_common.models.user import User
 from smart_common.providers.wizard.exceptions import WizardSessionExpiredError
 from smart_common.repositories.provider import ProviderRepository
-from smart_common.schemas.provider_schema import ProviderCreateRequest, ProviderResponse
+from smart_common.schemas.provider_schema import (
+    ProviderCreateRequest,
+    ProviderEnabledUpdateRequest,
+    ProviderResponse,
+)
 from smart_common.services.provider_service import ProviderService
 
 from sqlalchemy.orm import Session
@@ -72,5 +78,35 @@ def create_provider(
             user_id=current_user.id,
             payload=payload_dict,
         )
+
+    return provider
+
+
+@provider_router.patch(
+    "/{provider_uuid}/enabled",
+    response_model=ProviderResponse,
+    status_code=200,
+)
+def set_provider_enabled(
+    provider_uuid: UUID,
+    payload: ProviderEnabledUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    repo = ProviderRepository(db)
+
+    provider = repo.get_for_user_by_uuid(
+        provider_uuid=provider_uuid,
+        user_id=current_user.id,
+    )
+
+    if not provider:
+        raise HTTPException(status_code=404, detail="Provider not found")
+
+    provider = repo.partial_update(
+        provider,
+        data={"enabled": payload.enabled},
+        allowed_fields={"enabled"},
+    )
 
     return provider

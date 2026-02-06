@@ -1,24 +1,28 @@
 import logging
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
+
 from smart_common.core.db import get_db
+from smart_common.core.dependencies import require_role
+from smart_common.enums.user import UserRole
 from smart_common.models.microcontroller import Microcontroller
 from smart_common.repositories.microcontroller import MicrocontrollerRepository
-from smart_common.schemas.pagination_schema import PaginatedResponse, PaginationMeta
+from smart_common.schemas.pagination_schema import (
+    PaginatedResponse,
+    PaginationMeta,
+)
 from smart_common.schemas.microcontroller_schema import (
     MicrocontrollerAdminUpdateRequest,
     MicrocontrollerConfigUpdateRequest,
     MicrocontrollerCreateRequest,
     MicrocontrollerListQuery,
     MicrocontrollerResponse,
-    MicrocontrollerSensorsResponse,
-    MicrocontrollerSensorsUpdateRequest,
-    MicrocontrollerUpdateRequest,
 )
-from smart_common.core.dependencies import require_role
-from smart_common.enums.user import UserRole
 from smart_common.services.microcontroller_service import MicrocontrollerService
 
+
+logger = logging.getLogger(__name__)
 
 admin_router = APIRouter(
     prefix="/admin/microcontrollers",
@@ -26,7 +30,9 @@ admin_router = APIRouter(
     dependencies=[Depends(require_role(UserRole.ADMIN))],
 )
 
-logger = logging.getLogger(__name__)
+# =====================================================
+# LIST
+# =====================================================
 
 
 @admin_router.get(
@@ -50,11 +56,13 @@ def list_microcontrollers(
     total = repo.count_admin(search=query.search)
 
     logger.info(
-        "Admin listed microcontrollers total=%s limit=%s offset=%s search=%s",
-        total,
-        query.limit,
-        query.offset,
-        query.search,
+        "Admin listed microcontrollers",
+        extra={
+            "total": total,
+            "limit": query.limit,
+            "offset": query.offset,
+            "search": query.search,
+        },
     )
 
     return PaginatedResponse(
@@ -70,6 +78,11 @@ def list_microcontrollers(
     )
 
 
+# =====================================================
+# CREATE
+# =====================================================
+
+
 @admin_router.post(
     "",
     response_model=MicrocontrollerResponse,
@@ -80,10 +93,9 @@ def admin_register_microcontroller(
     payload: MicrocontrollerCreateRequest,
     db: Session = Depends(get_db),
 ):
-    microcontroller_service = MicrocontrollerService(
-        repo_factory=MicrocontrollerRepository
-    )
-    microcontroller = microcontroller_service.register_microcontroller_admin(
+    service = MicrocontrollerService(repo_factory=MicrocontrollerRepository)
+
+    microcontroller = service.register_microcontroller_admin(
         db,
         payload=payload.model_dump(),
     )
@@ -92,6 +104,11 @@ def admin_register_microcontroller(
         microcontroller,
         from_attributes=True,
     )
+
+
+# =====================================================
+# GET
+# =====================================================
 
 
 @admin_router.get(
@@ -109,6 +126,11 @@ def admin_get_microcontroller(
         microcontroller,
         from_attributes=True,
     )
+
+
+# =====================================================
+# UPDATE
+# =====================================================
 
 
 @admin_router.patch(
@@ -139,6 +161,11 @@ def admin_update_microcontroller(
     )
 
 
+# =====================================================
+# CONFIG UPDATE
+# =====================================================
+
+
 @admin_router.patch(
     "/{microcontroller_id}/config",
     response_model=MicrocontrollerResponse,
@@ -161,6 +188,11 @@ def admin_update_microcontroller_config(
         microcontroller,
         from_attributes=True,
     )
+
+
+# =====================================================
+# DELETE
+# =====================================================
 
 
 @admin_router.delete(

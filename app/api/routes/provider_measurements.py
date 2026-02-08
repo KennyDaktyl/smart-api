@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from smart_common.core.db import get_db
 from smart_common.core.dependencies import get_current_user
+from smart_common.enums.unit import PowerUnit
 from smart_common.models.user import User
 from smart_common.repositories.provider import ProviderRepository
 from smart_common.repositories.measurement_repository import MeasurementRepository
@@ -29,7 +30,7 @@ provider_measurements_router = APIRouter(
 @provider_measurements_router.get(
     "/provider/{provider_uuid}/energy",
     response_model=ProviderEnergySeriesOut,
-    summary="Provider hourly energy (Wh) grouped by day",
+    summary="Provider hourly energy portfolio grouped by day",
 )
 def list_provider_energy(
     provider_uuid: UUID,
@@ -58,9 +59,6 @@ def list_provider_energy(
     if start > end:
         raise HTTPException(status_code=400, detail="date_start must be <= date_end")
 
-    # ===============================
-    # FETCH HOURLY ENERGY (REPO)
-    # ===============================
     rows = MeasurementRepository(db).list_hourly_energy(
         provider_id=provider.id,
         date_start=start,
@@ -69,22 +67,21 @@ def list_provider_energy(
 
     days: dict[str, DayEnergyOut] = {}
 
-    for hour_dt, avg_power_w in rows:
-        if avg_power_w is None:
+    for hour_dt, energy in rows:
+        if energy is None:
             continue
 
         hour_dt = hour_dt.astimezone(timezone.utc)
         day_key = hour_dt.date().isoformat()
-
-        energy_wh = float(avg_power_w)
+        energy = float(energy)
 
         day = days.setdefault(
             day_key,
             DayEnergyOut(
                 date=day_key,
-                total_energy_wh=0.0,
-                import_wh=0.0,
-                export_wh=0.0,
+                total_energy=0.0,
+                import_energy=0.0,
+                export_energy=0.0,
                 hours=[],
             ),
         )
@@ -92,20 +89,17 @@ def list_provider_energy(
         day.hours.append(
             HourlyEnergyPoint(
                 hour=hour_dt,
-                energy_wh=energy_wh,
+                energy=energy,
             )
         )
 
-        day.total_energy_wh += energy_wh
+        day.total_energy += energy
 
-        if energy_wh < 0:
-            day.import_wh += abs(energy_wh)
+        if energy < 0:
+            day.import_energy += abs(energy)
         else:
-            day.export_wh += energy_wh
+            day.export_energy += energy
 
-    # ===============================
-    # ENSURE EMPTY DAYS EXIST
-    # ===============================
     cursor = start.date()
     end_day = end.date()
 
@@ -115,12 +109,23 @@ def list_provider_energy(
             key,
             DayEnergyOut(
                 date=key,
-                total_energy_wh=0.0,
-                import_wh=0.0,
-                export_wh=0.0,
+                total_energy=0.0,
+                import_energy=0.0,
+                export_energy=0.0,
                 hours=[],
             ),
         )
         cursor += timedelta(days=1)
 
-    return ProviderEnergySeriesOut(days=days)
+    return ProviderEnergySeriesOut(
+        unit=_energy_unit_from_power(provider.unit),
+        days=days,
+    )
+
+
+def _energy_unit_from_power(unit: PowerUnit | None) -> str | None:
+    if unit == PowerUnit.KILOWATT:
+        return "kWh"
+    if unit == PowerUnit.WATT:
+        return "Wh"
+    return None

@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, HTTPException
+from smart_common.services.energy_calculation_service import EnergyCalculationService, PowerSample
 from sqlalchemy.orm import Session
 
 from smart_common.core.db import get_db
@@ -30,7 +31,6 @@ provider_measurements_router = APIRouter(
 @provider_measurements_router.get(
     "/provider/{provider_uuid}/energy",
     response_model=ProviderEnergySeriesOut,
-    summary="Provider hourly energy portfolio grouped by day",
 )
 def list_provider_energy(
     provider_uuid: UUID,
@@ -49,31 +49,33 @@ def list_provider_energy(
 
     now = datetime.now(timezone.utc)
 
-    start = (
-        date_start.astimezone(timezone.utc)
-        if date_start
-        else now.replace(hour=0, minute=0, second=0, microsecond=0)
+    start = date_start.astimezone(timezone.utc) if date_start else now.replace(
+        hour=0, minute=0, second=0, microsecond=0
     )
     end = date_end.astimezone(timezone.utc) if date_end else now
 
     if start > end:
         raise HTTPException(status_code=400, detail="date_start must be <= date_end")
 
-    rows = MeasurementRepository(db).list_hourly_energy(
+    repo = MeasurementRepository(db)
+
+    raw_samples = repo.list_power_samples(
         provider_id=provider.id,
         date_start=start,
         date_end=end,
     )
 
+    samples = [
+        PowerSample(ts=ts.astimezone(timezone.utc), value=float(p))
+        for ts, p in raw_samples
+    ]
+
+    hourly_energy = EnergyCalculationService.integrate_hourly(samples)
+
     days: dict[str, DayEnergyOut] = {}
 
-    for hour_dt, energy in rows:
-        if energy is None:
-            continue
-
-        hour_dt = hour_dt.astimezone(timezone.utc)
+    for hour_dt, energy in hourly_energy.items():
         day_key = hour_dt.date().isoformat()
-        energy = float(energy)
 
         day = days.setdefault(
             day_key,
@@ -89,26 +91,20 @@ def list_provider_energy(
         day.hours.append(
             HourlyEnergyPoint(
                 hour=hour_dt,
-                energy=energy,
+                energy=round(energy, 5),
             )
         )
 
         day.total_energy += energy
-
-        if energy < 0:
-            day.import_energy += abs(energy)
-        else:
-            day.export_energy += energy
+        day.export_energy += max(0.0, energy)
+        day.import_energy += max(0.0, -energy)
 
     cursor = start.date()
-    end_day = end.date()
-
-    while cursor <= end_day:
-        key = cursor.isoformat()
+    while cursor <= end.date():
         days.setdefault(
-            key,
+            cursor.isoformat(),
             DayEnergyOut(
-                date=key,
+                date=cursor.isoformat(),
                 total_energy=0.0,
                 import_energy=0.0,
                 export_energy=0.0,

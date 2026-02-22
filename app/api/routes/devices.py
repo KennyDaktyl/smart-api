@@ -11,10 +11,10 @@ from smart_common.repositories.device import DeviceRepository
 from smart_common.repositories.microcontroller import MicrocontrollerRepository
 from smart_common.schemas.device_schema import (
     DeviceCreateRequest,
-    DeviceUpdateRequest,
+    DeviceManualStateResponse,
     DeviceResponse,
     DeviceSetManualStateRequest,
-    DeviceManualStateResponse,
+    DeviceUpdateRequest,
 )
 from smart_common.services.device_service import DeviceService
 

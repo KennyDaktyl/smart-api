@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from datetime import date as date_type
 from datetime import datetime, timezone
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, HTTPException, status
 from sqlalchemy.orm import Session
@@ -14,6 +15,8 @@ from smart_common.enums.device_event import DeviceEventType
 from smart_common.schemas.device_event_schema import (
     DeviceEventCreate,
     DeviceEventCreateFromAgent,
+    DeviceEventCreateFromAgentBase,
+    DeviceEventCreateFromAgentByUUID,
     DeviceEventOut,
     DeviceEventSeriesOut,
 )
@@ -114,6 +117,41 @@ def _sync_device_config_state(device, *, is_on: bool) -> None:
     config["devices_config"] = devices_config
     microcontroller.config = config
 
+
+def _create_agent_event(
+    *,
+    db: Session,
+    device,
+    payload: DeviceEventCreateFromAgentBase,
+) -> DeviceEventOut:
+    event_payload = payload.model_dump(
+        exclude_unset=True,
+        exclude={"device_id", "device_number", "is_on"},
+    )
+    event_payload["device_id"] = device.id
+
+    if event_payload.get("pin_state") is None and payload.is_on is not None:
+        event_payload["pin_state"] = payload.is_on
+
+    if event_payload.get("source") is None:
+        event_payload["source"] = "agent"
+
+    resolved_state = _resolve_state_value(
+        is_on=payload.is_on,
+        pin_state=event_payload.get("pin_state"),
+        device_state=payload.device_state,
+    )
+    if payload.event_type == DeviceEventType.STATE and resolved_state is not None:
+        device.manual_state = resolved_state
+        device.last_state_change_at = payload.created_at or datetime.now(timezone.utc)
+        _sync_device_config_state(device, is_on=resolved_state)
+
+    event = DeviceEventRepository(db).create(
+        **event_payload,
+    )
+
+    return DeviceEventOut.model_validate(event, from_attributes=True)
+
 # =====================================================
 # CREATE EVENT
 # =====================================================
@@ -183,8 +221,8 @@ def create_device_event_from_agent(
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=(
-                    "device_number is ambiguous. Send device_id instead or include "
-                    "a unique device mapping."
+                    "device_number is ambiguous. Send device_id or call "
+                    "/api/device-events/agent/{device_uuid}."
                 ),
             )
         else:
@@ -226,33 +264,55 @@ def create_device_event_from_agent(
             detail="Device not found",
         )
 
-    event_payload = payload.model_dump(
-        exclude_unset=True,
-        exclude={"device_number", "is_on"},
-    )
-    event_payload["device_id"] = device.id
-
-    if event_payload.get("pin_state") is None and payload.is_on is not None:
-        event_payload["pin_state"] = payload.is_on
-
-    if event_payload.get("source") is None:
-        event_payload["source"] = "agent"
-
-    resolved_state = _resolve_state_value(
-        is_on=payload.is_on,
-        pin_state=event_payload.get("pin_state"),
-        device_state=payload.device_state,
-    )
-    if payload.event_type == DeviceEventType.STATE and resolved_state is not None:
-        device.manual_state = resolved_state
-        device.last_state_change_at = payload.created_at or datetime.now(timezone.utc)
-        _sync_device_config_state(device, is_on=resolved_state)
-
-    event = DeviceEventRepository(db).create(
-        **event_payload,
+    return _create_agent_event(
+        db=db,
+        device=device,
+        payload=payload,
     )
 
-    return DeviceEventOut.model_validate(event, from_attributes=True)
+
+@device_events_router.post(
+    "/agent/{device_uuid}",
+    response_model=DeviceEventOut,
+    status_code=201,
+    summary="Create device event (agent, by device UUID)",
+)
+def create_device_event_from_agent_by_uuid(
+    device_uuid: UUID,
+    payload: DeviceEventCreateFromAgentByUUID,
+    db: Session = Depends(get_db),
+    agent=Depends(get_current_agent),
+) -> DeviceEventOut:
+    device = DeviceRepository(db).get_by_uuid(device_uuid)
+
+    logger.info(
+        "Creating device event from agent by uuid",
+        extra={
+            "agent": agent["name"],
+            "device_uuid": str(device_uuid),
+            "event_type": payload.event_type.value,
+            "event_name": payload.event_name.value,
+        },
+    )
+
+    if not device:
+        logger.warning(
+            "Agent sent event for unknown device uuid",
+            extra={
+                "device_uuid": str(device_uuid),
+                "agent": agent["name"],
+            },
+        )
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Device not found",
+        )
+
+    return _create_agent_event(
+        db=db,
+        device=device,
+        payload=payload,
+    )
 
 
 # =====================================================

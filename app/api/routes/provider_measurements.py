@@ -19,11 +19,14 @@ from smart_common.repositories.device_event import DeviceEventRepository
 from smart_common.repositories.provider import ProviderRepository
 from smart_common.repositories.measurement_repository import MeasurementRepository
 from smart_common.schemas.provider_measurement_schemas import (
+    DayPowerOut,
     DayEnergyOut,
-    EnergyEntryPoint,
     HourlyEnergyPoint,
+    PowerEntryPoint,
+    ProviderMeasurementResponse,
     ProviderCurrentHourPoolOut,
     ProviderEnergySeriesOut,
+    ProviderPowerSeriesOut,
 )
 from smart_common.services.energy_calculation_service import (
     EnergyCalculationService,
@@ -73,20 +76,31 @@ def list_provider_energy(
         for ts, p in raw_samples
     ]
 
-    interval_energy = EnergyCalculationService.integrate_intervals(samples)
+    raw_measurements = repo.list_measurements(
+        provider_id=provider.id,
+        date_start=start,
+        date_end=end,
+    )
     hourly_energy = EnergyCalculationService.integrate_hourly(samples)
 
     day_key = start.date().isoformat()
     days: dict[str, DayEnergyOut] = {day_key: _empty_day(day_key)}
 
-    for interval in interval_energy:
-        interval_day_key = interval.ts.date().isoformat()
-        day = days.setdefault(interval_day_key, _empty_day(interval_day_key))
-
+    for measurement in raw_measurements:
+        measured_at = _to_utc_aware(measurement.measured_at)
+        measurement_day_key = measured_at.date().isoformat()
+        day = days.setdefault(measurement_day_key, _empty_day(measurement_day_key))
         day.entries.append(
-            EnergyEntryPoint(
-                timestamp=interval.ts,
-                energy=round(interval.energy, 5),
+            ProviderMeasurementResponse(
+                id=measurement.id,
+                measured_at=measured_at,
+                measured_value=(
+                    float(measurement.measured_value)
+                    if measurement.measured_value is not None
+                    else None
+                ),
+                measured_unit=measurement.measured_unit,
+                metadata_payload=dict(measurement.metadata_payload or {}),
             )
         )
 
@@ -111,13 +125,68 @@ def list_provider_energy(
 
     for day in days.values():
         day.hours.sort(key=lambda point: point.hour)
-        day.entries.sort(key=lambda point: point.timestamp)
+        day.entries.sort(key=lambda point: point.measured_at)
         day.total_energy = round(day.total_energy, 5)
         day.import_energy = round(day.import_energy, 5)
         day.export_energy = round(day.export_energy, 5)
 
     return ProviderEnergySeriesOut(
         unit=_energy_unit_from_power(provider.unit),
+        days=days,
+    )
+
+
+@provider_measurements_router.get(
+    "/provider/{provider_uuid}/power",
+    response_model=ProviderPowerSeriesOut,
+)
+def list_provider_power(
+    provider_uuid: UUID,
+    selected_date: date_type | None = Query(None, alias="date"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> ProviderPowerSeriesOut:
+    provider = ProviderRepository(db).get_for_user_by_uuid(
+        provider_uuid=provider_uuid,
+        user_id=current_user.id,
+    )
+    if not provider:
+        raise HTTPException(status_code=404, detail="Provider not found")
+
+    if provider.kind != ProviderKind.POWER:
+        raise HTTPException(
+            status_code=422,
+            detail="Raw power is available only for POWER providers",
+        )
+
+    now = datetime.now(timezone.utc)
+    start, end = _resolve_day_window(selected_date=selected_date, now=now)
+
+    raw_samples = MeasurementRepository(db).list_power_samples(
+        provider_id=provider.id,
+        date_start=start,
+        date_end=end,
+    )
+
+    day_key = start.date().isoformat()
+    days: dict[str, DayPowerOut] = {day_key: _empty_power_day(day_key)}
+
+    for ts, value in raw_samples:
+        ts_utc = _to_utc_aware(ts)
+        point_day_key = ts_utc.date().isoformat()
+        day = days.setdefault(point_day_key, _empty_power_day(point_day_key))
+        day.entries.append(
+            PowerEntryPoint(
+                timestamp=ts_utc,
+                power=round(float(value), 5),
+            )
+        )
+
+    for day in days.values():
+        day.entries.sort(key=lambda point: point.timestamp)
+
+    return ProviderPowerSeriesOut(
+        unit=provider.unit.value if provider.unit else None,
         days=days,
     )
 
@@ -464,6 +533,13 @@ def _empty_day(day_key: str) -> DayEnergyOut:
         import_energy=0.0,
         export_energy=0.0,
         hours=[],
+        entries=[],
+    )
+
+
+def _empty_power_day(day_key: str) -> DayPowerOut:
+    return DayPowerOut(
+        date=day_key,
         entries=[],
     )
 

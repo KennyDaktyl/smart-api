@@ -34,14 +34,14 @@ services:
       - .env
     restart: unless-stopped
 
-  redis:
-    image: redis:7-alpine
-    container_name: smart_energy_redis
-    network_mode: host
-    command: redis-server --appendonly yes
-    volumes:
-      - redis_data:/data
-    restart: unless-stopped
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: smart_energy_redis
+  #   network_mode: host
+  #   command: redis-server --appendonly yes
+  #   volumes:
+  #     - redis_data:/data
+  #   restart: unless-stopped
 
 
 volumes:

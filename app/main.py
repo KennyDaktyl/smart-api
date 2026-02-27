@@ -21,6 +21,7 @@ from app.api.routes.microcontrollers import microcontroller_router
 from app.api.routes.devices import device_router
 from app.api.routes.device_events import device_events_router
 from app.api.routes.provider_measurements import provider_measurements_router
+from app.api.routes.schedulers import scheduler_router
 
 from smart_common.core.config import settings
 
@@ -74,6 +75,7 @@ app.include_router(microcontroller_router, prefix="/api")
 app.include_router(device_router, prefix="/api")
 app.include_router(device_events_router, prefix="/api")
 app.include_router(provider_measurements_router, prefix="/api")
+app.include_router(scheduler_router, prefix="/api")
 # ------------------------------------------------------------------
 # HEALTHCHECK
 # ------------------------------------------------------------------

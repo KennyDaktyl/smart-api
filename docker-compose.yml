@@ -44,5 +44,5 @@ services:
   #   restart: unless-stopped
 
 
-volumes:
-  redis_data:
+# volumes:
+#   redis_data:

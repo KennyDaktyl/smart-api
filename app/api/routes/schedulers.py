@@ -1,11 +1,12 @@
 import logging
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from smart_common.core.db import get_db
 from smart_common.core.dependencies import get_current_user
 from smart_common.models.user import User
+from smart_common.providers.enums import ProviderKind
 from smart_common.repositories.provider import ProviderRepository
 from smart_common.repositories.scheduler import SchedulerRepository
 from smart_common.schemas.scheduler_schema import (
@@ -23,6 +24,34 @@ scheduler_router = APIRouter(
     prefix="/schedulers",
     tags=["Schedulers"],
 )
+
+
+def _validate_slot_providers(*, db: Session, user_id: int, slots: list[dict]) -> None:
+    provider_ids = sorted(
+        {
+            slot.get("power_provider_id")
+            for slot in slots
+            if slot.get("use_power_threshold")
+            and slot.get("power_provider_id") is not None
+        }
+    )
+    if not provider_ids:
+        return
+
+    provider_repo = ProviderRepository(db)
+
+    for provider_id in provider_ids:
+        provider = provider_repo.get_for_user(provider_id=provider_id, user_id=user_id)
+        if not provider:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Power provider {provider_id} not found",
+            )
+        if provider.kind != ProviderKind.POWER:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Provider {provider_id} is not a POWER provider",
+            )
 
 
 @scheduler_router.get("", response_model=list[SchedulerResponse])
@@ -47,10 +76,16 @@ def create_scheduler(
     current_user: User = Depends(get_current_user),
 ):
     service = SchedulerService(SchedulerRepository)
+    payload_data = payload.model_dump()
+    _validate_slot_providers(
+        db=db,
+        user_id=current_user.id,
+        slots=payload_data["slots"],
+    )
     scheduler = service.create_scheduler(
         db=db,
         user_id=current_user.id,
-        payload=payload.model_dump(),
+        payload=payload_data,
     )
     return SchedulerResponse.model_validate(scheduler, from_attributes=True)
 
@@ -102,11 +137,17 @@ def update_scheduler(
     current_user: User = Depends(get_current_user),
 ):
     service = SchedulerService(SchedulerRepository)
+    payload_data = payload.model_dump()
+    _validate_slot_providers(
+        db=db,
+        user_id=current_user.id,
+        slots=payload_data["slots"],
+    )
     scheduler = service.update_scheduler(
         db=db,
         user_id=current_user.id,
         scheduler_id=scheduler_id,
-        payload=payload.model_dump(),
+        payload=payload_data,
     )
     return SchedulerResponse.model_validate(scheduler, from_attributes=True)
 

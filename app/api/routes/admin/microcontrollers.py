@@ -100,7 +100,7 @@ def admin_register_microcontroller(
 
     microcontroller = service.register_microcontroller_admin(
         db,
-        payload=payload.model_dump(),
+        payload=payload.model_dump(mode="python")
     )
 
     return MicrocontrollerResponse.model_validate(

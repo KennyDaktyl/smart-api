@@ -248,6 +248,22 @@ async def admin_reboot_microcontroller_agent(
     )
 
 
+@admin_router.post(
+    "/{microcontroller_id}/agent-update",
+    response_model=MicrocontrollerAgentCommandAck,
+    summary="Pull latest image and recreate microcontroller agent (admin)",
+)
+async def admin_update_microcontroller_agent(
+    microcontroller_id: int,
+    db: Session = Depends(get_db),
+):
+    service = MicrocontrollerService(repo_factory=MicrocontrollerRepository)
+    return await service.update_agent(
+        db,
+        microcontroller_id=microcontroller_id,
+    )
+
+
 # =====================================================
 # DELETE
 # =====================================================

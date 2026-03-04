@@ -1,7 +1,7 @@
 services:
   backend:
     build: .
-    container_name: smart_energy_backend
+    container_name: smart-api
     environment:
       PORT: ${PORT:-8000}
     command: >
@@ -26,7 +26,7 @@ services:
 
   db:
     image: postgres:16
-    container_name: smart_energy_db
+    container_name: smart-db
     # restart: always
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-smartenergy}

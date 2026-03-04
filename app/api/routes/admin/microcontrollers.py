@@ -14,6 +14,9 @@ from smart_common.schemas.pagination_schema import (
 )
 from smart_common.schemas.microcontroller_schema import (
     MicrocontrollerAdminUpdateRequest,
+    MicrocontrollerAgentCommandAck,
+    MicrocontrollerAgentConfigFilesResponse,
+    MicrocontrollerAgentConfigFilesUpdateRequest,
     MicrocontrollerConfigUpdateRequest,
     MicrocontrollerCreateRequest,
     MicrocontrollerListQuery,
@@ -187,6 +190,61 @@ def admin_update_microcontroller_config(
     return MicrocontrollerResponse.model_validate(
         microcontroller,
         from_attributes=True,
+    )
+
+
+# =====================================================
+# AGENT CONFIG FILES
+# =====================================================
+
+
+@admin_router.get(
+    "/{microcontroller_id}/agent-config-files",
+    response_model=MicrocontrollerAgentConfigFilesResponse,
+    summary="Get agent config.json and hardware_config.json (admin)",
+)
+async def admin_get_agent_config_files(
+    microcontroller_id: int,
+    db: Session = Depends(get_db),
+):
+    service = MicrocontrollerService(repo_factory=MicrocontrollerRepository)
+    return await service.get_agent_config_files(
+        db,
+        microcontroller_id=microcontroller_id,
+    )
+
+
+@admin_router.put(
+    "/{microcontroller_id}/agent-config-files",
+    response_model=MicrocontrollerAgentCommandAck,
+    summary="Update agent config.json and hardware_config.json (admin)",
+)
+async def admin_update_agent_config_files(
+    microcontroller_id: int,
+    payload: MicrocontrollerAgentConfigFilesUpdateRequest,
+    db: Session = Depends(get_db),
+):
+    service = MicrocontrollerService(repo_factory=MicrocontrollerRepository)
+    return await service.update_agent_config_files(
+        db,
+        microcontroller_id=microcontroller_id,
+        payload=payload,
+    )
+
+
+@admin_router.post(
+    "/{microcontroller_id}/agent-reboot",
+    response_model=MicrocontrollerAgentCommandAck,
+    summary="Reboot microcontroller agent (admin)",
+)
+async def admin_reboot_microcontroller_agent(
+    microcontroller_id: int,
+    db: Session = Depends(get_db),
+):
+    service = MicrocontrollerService(repo_factory=MicrocontrollerRepository)
+    return await service.reboot_agent(
+        db,
+        microcontroller_id=microcontroller_id,
     )
 
 

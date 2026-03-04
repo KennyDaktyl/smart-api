@@ -101,6 +101,7 @@ def list_provider_energy(
                 ),
                 measured_unit=measurement.measured_unit,
                 metadata_payload=dict(measurement.metadata_payload or {}),
+                extra_data=dict(measurement.extra_data or {}),
             )
         )
 

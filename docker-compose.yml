@@ -1,7 +1,7 @@
 services:
   backend:
     build: .
-    container_name: smart_energy_backend
+    container_name: smart-api
     network_mode: host
     command: >
       uvicorn app.main:app
@@ -18,7 +18,7 @@ services:
 
   celery_worker:
     build: .
-    container_name: smart_energy_celery_worker
+    container_name: smart-api-worker
     network_mode: host
     command: >
       celery -A app.celery_app worker

@@ -10,11 +10,13 @@ from smart_common.core.db import get_db
 from smart_common.core.dependencies import get_current_user
 from smart_common.models.user import User
 from smart_common.repositories.microcontroller import MicrocontrollerRepository
+from smart_common.repositories.provider import ProviderRepository
 from smart_common.schemas.microcontroller_schema import (
     MicrocontrollerCreateRequest,
     MicrocontrollerResponse,
     MicrocontrollerSetProviderRequest,
 )
+from smart_common.services.microcontroller_service import MicrocontrollerService
 
 logger = logging.getLogger(__name__)
 
@@ -150,25 +152,23 @@ def delete_microcontroller(
     response_model=MicrocontrollerResponse,
     summary="Set or clear power provider for microcontroller",
 )
-def set_microcontroller_provider(
+async def set_microcontroller_provider(
     microcontroller_uuid: UUID,
     payload: MicrocontrollerSetProviderRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> MicrocontrollerResponse:
-    repo = MicrocontrollerRepository(db)
+    service = MicrocontrollerService(
+        repo_factory=MicrocontrollerRepository,
+        provider_repo_factory=ProviderRepository,
+    )
 
-    microcontroller = repo.set_power_provider_for_user(
+    microcontroller = await service.set_power_provider(
+        db=db,
         microcontroller_uuid=microcontroller_uuid,
         user_id=current_user.id,
         provider_uuid=payload.provider_uuid,
     )
-
-    if not microcontroller:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Microcontroller not found",
-        )
 
     return MicrocontrollerResponse.model_validate(
         microcontroller,

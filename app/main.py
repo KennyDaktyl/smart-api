@@ -3,11 +3,13 @@ from smart_common.smart_logging.logger import setup_logging
 setup_logging()
 
 import logging
+import os
 from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+import sentry_sdk
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.routes.provider_definitions import provider_definition_router
@@ -21,6 +23,7 @@ from app.api.routes.microcontrollers import microcontroller_router
 from app.api.routes.devices import device_router
 from app.api.routes.device_events import device_events_router
 from app.api.routes.provider_measurements import provider_measurements_router
+from app.api.routes.schedulers import scheduler_router
 
 from smart_common.core.config import settings
 
@@ -31,9 +34,26 @@ from smart_common.core.config import settings
 logger = logging.getLogger(__name__)
 logger.info("Starting Smart Energy Backend application")
 
+
+def _init_sentry() -> None:
+    sentry_dsn = os.getenv("SENTRY_DSN")
+    if not sentry_dsn:
+        logger.info("Sentry disabled (SENTRY_DSN is not set)")
+        return
+
+    sentry_sdk.init(
+        dsn=sentry_dsn,
+        send_default_pii=True,
+        environment=settings.ENV,
+    )
+    logger.info("Sentry enabled for ENV=%s", settings.ENV)
+
+
 # ------------------------------------------------------------------
 # FASTAPI APP
 # ------------------------------------------------------------------
+
+_init_sentry()
 
 app = FastAPI(
     title="Smart Energy Backend",
@@ -74,6 +94,7 @@ app.include_router(microcontroller_router, prefix="/api")
 app.include_router(device_router, prefix="/api")
 app.include_router(device_events_router, prefix="/api")
 app.include_router(provider_measurements_router, prefix="/api")
+app.include_router(scheduler_router, prefix="/api")
 # ------------------------------------------------------------------
 # HEALTHCHECK
 # ------------------------------------------------------------------

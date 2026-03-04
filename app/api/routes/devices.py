@@ -9,12 +9,13 @@ from smart_common.core.dependencies import get_current_user
 from smart_common.models.user import User
 from smart_common.repositories.device import DeviceRepository
 from smart_common.repositories.microcontroller import MicrocontrollerRepository
+from smart_common.repositories.scheduler import SchedulerRepository
 from smart_common.schemas.device_schema import (
     DeviceCreateRequest,
-    DeviceUpdateRequest,
+    DeviceManualStateResponse,
     DeviceResponse,
     DeviceSetManualStateRequest,
-    DeviceManualStateResponse,
+    DeviceUpdateRequest,
 )
 from smart_common.services.device_service import DeviceService
 
@@ -114,7 +115,11 @@ async def create_device(
         payload.model_dump(exclude_unset=True),
     )
 
-    service = DeviceService(DeviceRepository, MicrocontrollerRepository)
+    service = DeviceService(
+        DeviceRepository,
+        MicrocontrollerRepository,
+        SchedulerRepository,
+    )
 
     device = await service.create_device(
         db=db,
@@ -156,7 +161,11 @@ async def update_device(
         payload.model_dump(exclude_unset=True),
     )
 
-    service = DeviceService(DeviceRepository, MicrocontrollerRepository)
+    service = DeviceService(
+        DeviceRepository,
+        MicrocontrollerRepository,
+        SchedulerRepository,
+    )
 
     device = await service.update_device(
         db=db,
@@ -191,7 +200,11 @@ async def delete_device(
         current_user.id,
     )
 
-    service = DeviceService(DeviceRepository, MicrocontrollerRepository)
+    service = DeviceService(
+        DeviceRepository,
+        MicrocontrollerRepository,
+        SchedulerRepository,
+    )
 
     await service.delete_device(
         db=db,
@@ -220,7 +233,11 @@ async def set_device_manual_state(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    service = DeviceService(DeviceRepository, MicrocontrollerRepository)
+    service = DeviceService(
+        DeviceRepository,
+        MicrocontrollerRepository,
+        SchedulerRepository,
+    )
 
     device_dto, ack = await service.set_manual_state(
         db=db,
@@ -269,7 +286,11 @@ def list_devices_for_microcontroller(
         microcontroller_uuid,
     )
 
-    service = DeviceService(DeviceRepository, MicrocontrollerRepository)
+    service = DeviceService(
+        DeviceRepository,
+        MicrocontrollerRepository,
+        SchedulerRepository,
+    )
 
     devices = service.list_for_microcontroller(
         db=db,

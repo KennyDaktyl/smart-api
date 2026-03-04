@@ -11,6 +11,7 @@ from smart_common.schemas.provider_schema import (
     ProviderCreateRequest,
     ProviderEnabledUpdateRequest,
     ProviderResponse,
+    ProviderUpdateRequest,
 )
 from smart_common.services.provider_service import ProviderService
 
@@ -80,6 +81,31 @@ def create_provider(
         )
 
     return provider
+
+
+@provider_router.patch(
+    "/{provider_uuid}",
+    response_model=ProviderResponse,
+    status_code=200,
+    summary="Update provider",
+)
+def update_provider(
+    provider_uuid: UUID,
+    payload: ProviderUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> ProviderResponse:
+    provider_service = ProviderService(
+        provider_repo_factory=lambda session: ProviderRepository(session),
+        microcontroller_repo_factory=None,
+    )
+
+    return provider_service.update_by_uuid(
+        db=db,
+        user_id=current_user.id,
+        provider_uuid=provider_uuid,
+        payload=payload.model_dump(exclude_none=True),
+    )
 
 
 @provider_router.patch(

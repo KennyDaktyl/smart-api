@@ -50,7 +50,7 @@ def list_microcontrollers(
         limit=query.limit,
         offset=query.offset,
         search=query.search,
-        order_by=Microcontroller.created_at.desc(),
+        order_by=Microcontroller.id.asc(),
     )
 
     total = repo.count_admin(search=query.search)

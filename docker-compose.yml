@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   backend:
     build: .
@@ -28,24 +26,23 @@ services:
       --pool=solo
       --concurrency=1
       --hostname=worker@%h
+      --logfile=/app/logs/celery_worker.log
     volumes:
       - .:/app
-      - celery_logs:/app/logs
+      - ./logs:/app/logs
     env_file:
       - .env
     restart: unless-stopped
 
-  redis:
-    image: redis:7-alpine
-    container_name: smart_energy_redis
-    network_mode: host
-    command: redis-server --appendonly yes
-    volumes:
-      - redis_data:/data
-    restart: unless-stopped
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: smart_energy_redis
+  #   network_mode: host
+  #   command: redis-server --appendonly yes
+  #   volumes:
+  #     - redis_data:/data
+  #   restart: unless-stopped
 
 
-volumes:
-  backend_logs:
-  celery_logs:
-  redis_data:
+# volumes:
+#   redis_data:

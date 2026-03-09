@@ -65,6 +65,26 @@ def list_user_providers(
     return safe_providers
 
 
+@provider_router.get(
+    "/{provider_uuid}",
+    response_model=ProviderResponse,
+    status_code=200,
+    summary="Get provider details",
+)
+def get_provider(
+    provider_uuid: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> ProviderResponse:
+    provider = ProviderRepository(db).get_for_user_by_uuid(
+        provider_uuid=provider_uuid,
+        user_id=current_user.id,
+    )
+    if not provider:
+        raise HTTPException(status_code=404, detail="Provider not found")
+    return provider
+
+
 @provider_router.post(
     "",
     response_model=ProviderResponse,

@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from smart_common.core.db import get_db
 from smart_common.core.dependencies import get_current_user
+from smart_common.enums.provider_telemetry import TelemetryAggregationMode
 from smart_common.enums.unit import PowerUnit
 from smart_common.models.device import Device
 from smart_common.models.microcontroller import Microcontroller
@@ -23,6 +24,9 @@ from smart_common.schemas.provider_measurement_schemas import (
     DayEnergyOut,
     HourlyEnergyPoint,
     PowerEntryPoint,
+    ProviderMetricHourlyPoint,
+    ProviderMetricPoint,
+    ProviderMetricSeriesOut,
     ProviderMeasurementResponse,
     ProviderCurrentHourPoolOut,
     ProviderEnergySeriesOut,
@@ -189,6 +193,86 @@ def list_provider_power(
     return ProviderPowerSeriesOut(
         unit=provider.unit.value if provider.unit else None,
         days=days,
+    )
+
+
+@provider_measurements_router.get(
+    "/provider/{provider_uuid}/metrics/{metric_key}",
+    response_model=ProviderMetricSeriesOut,
+)
+def get_provider_metric_series(
+    provider_uuid: UUID,
+    metric_key: str,
+    selected_date: date_type | None = Query(None, alias="date"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> ProviderMetricSeriesOut:
+    provider = ProviderRepository(db).get_for_user_by_uuid(
+        provider_uuid=provider_uuid,
+        user_id=current_user.id,
+    )
+    if not provider:
+        raise HTTPException(status_code=404, detail="Provider not found")
+
+    now = datetime.now(timezone.utc)
+    start, end = _resolve_day_window(selected_date=selected_date, now=now)
+    repo = MeasurementRepository(db)
+    definition = repo.get_metric_definition(
+        provider_id=provider.id,
+        metric_key=metric_key,
+    )
+    if definition is None:
+        raise HTTPException(status_code=404, detail="Metric not found")
+
+    raw_samples = repo.list_metric_samples(
+        provider_id=provider.id,
+        metric_key=metric_key,
+        date_start=start,
+        date_end=end,
+    )
+
+    entries: list[ProviderMetricPoint] = []
+    hours: list[ProviderMetricHourlyPoint] = []
+    output_unit = definition.unit
+
+    if definition.aggregation_mode == TelemetryAggregationMode.RAW:
+        entries = [
+            ProviderMetricPoint(
+                timestamp=_to_utc_aware(sample.measured_at),
+                value=round(float(sample.value), 5),
+            )
+            for sample in raw_samples
+        ]
+    elif definition.aggregation_mode == TelemetryAggregationMode.HOURLY_INTEGRAL:
+        hourly_energy = EnergyCalculationService.integrate_hourly(
+            [
+                PowerSample(
+                    ts=_to_utc_aware(sample.measured_at),
+                    value=float(sample.value),
+                )
+                for sample in raw_samples
+            ]
+        )
+        output_unit = _energy_unit_from_unit(definition.unit)
+        hours = [
+            ProviderMetricHourlyPoint(
+                hour=hour_dt,
+                value=round(energy, 5),
+            )
+            for hour_dt, energy in sorted(hourly_energy.items())
+        ]
+
+    return ProviderMetricSeriesOut(
+        metric_key=definition.metric_key,
+        label=definition.label,
+        unit=output_unit,
+        source_unit=definition.unit,
+        chart_type=definition.chart_type,
+        aggregation_mode=definition.aggregation_mode,
+        capability_tag=definition.capability_tag,
+        date=start.date().isoformat(),
+        entries=entries,
+        hours=hours,
     )
 
 
@@ -551,3 +635,11 @@ def _energy_unit_from_power(unit: PowerUnit | None) -> str | None:
     if unit == PowerUnit.WATT:
         return "Wh"
     return None
+
+
+def _energy_unit_from_unit(unit: str | None) -> str | None:
+    if unit == PowerUnit.KILOWATT.value:
+        return "kWh"
+    if unit == PowerUnit.WATT.value:
+        return "Wh"
+    return unit

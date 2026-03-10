@@ -36,9 +36,53 @@ def list_user_providers(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[ProviderResponse]:
+    if current_user.id is None:
+        raise HTTPException(status_code=401, detail="Unauthorized")
 
     provider_repository = ProviderRepository(db)
-    return provider_repository.list_for_user(user_id=current_user.id)
+    providers = provider_repository.list_for_user(user_id=current_user.id)
+
+    # Defensive ownership check: never leak providers from other users.
+    safe_providers = []
+    for provider in providers:
+        owned_provider = provider_repository.get_for_user(
+            provider_id=provider.id,
+            user_id=current_user.id,
+        )
+        if owned_provider:
+            safe_providers.append(provider)
+
+    if len(safe_providers) != len(providers):
+        logger.warning(
+            "Filtered cross-user providers from list endpoint",
+            extra={
+                "user_id": current_user.id,
+                "returned": len(safe_providers),
+                "original": len(providers),
+            },
+        )
+
+    return safe_providers
+
+
+@provider_router.get(
+    "/{provider_uuid}",
+    response_model=ProviderResponse,
+    status_code=200,
+    summary="Get provider details",
+)
+def get_provider(
+    provider_uuid: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> ProviderResponse:
+    provider = ProviderRepository(db).get_for_user_by_uuid(
+        provider_uuid=provider_uuid,
+        user_id=current_user.id,
+    )
+    if not provider:
+        raise HTTPException(status_code=404, detail="Provider not found")
+    return provider
 
 
 @provider_router.post(

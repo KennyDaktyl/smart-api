@@ -100,7 +100,7 @@ def admin_register_microcontroller(
 
     microcontroller = service.register_microcontroller_admin(
         db,
-        payload=payload.model_dump(),
+        payload=payload.model_dump(mode="python")
     )
 
     return MicrocontrollerResponse.model_validate(
@@ -201,7 +201,7 @@ def admin_update_microcontroller_config(
 @admin_router.get(
     "/{microcontroller_id}/agent-config-files",
     response_model=MicrocontrollerAgentConfigFilesResponse,
-    summary="Get agent config.json and hardware_config.json (admin)",
+    summary="Get agent config.json, hardware_config.json and .env (admin)",
 )
 async def admin_get_agent_config_files(
     microcontroller_id: int,
@@ -217,7 +217,7 @@ async def admin_get_agent_config_files(
 @admin_router.put(
     "/{microcontroller_id}/agent-config-files",
     response_model=MicrocontrollerAgentCommandAck,
-    summary="Update agent config.json and hardware_config.json (admin)",
+    summary="Update agent config.json, hardware_config.json and .env (admin)",
 )
 async def admin_update_agent_config_files(
     microcontroller_id: int,
@@ -243,6 +243,22 @@ async def admin_reboot_microcontroller_agent(
 ):
     service = MicrocontrollerService(repo_factory=MicrocontrollerRepository)
     return await service.reboot_agent(
+        db,
+        microcontroller_id=microcontroller_id,
+    )
+
+
+@admin_router.post(
+    "/{microcontroller_id}/agent-update",
+    response_model=MicrocontrollerAgentCommandAck,
+    summary="Pull latest image and recreate microcontroller agent (admin)",
+)
+async def admin_update_microcontroller_agent(
+    microcontroller_id: int,
+    db: Session = Depends(get_db),
+):
+    service = MicrocontrollerService(repo_factory=MicrocontrollerRepository)
+    return await service.update_agent(
         db,
         microcontroller_id=microcontroller_id,
     )

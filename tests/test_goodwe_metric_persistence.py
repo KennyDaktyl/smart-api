@@ -40,12 +40,14 @@ class FakeSession:
     def __init__(self):
         self.added = []
         self.flushed = 0
+        self.next_measurement_id = 501
 
     def add(self, obj):
         if getattr(obj, "__tablename__", None) == "provider_measurements" and getattr(
             obj, "id", None
         ) is None:
-            obj.id = 501
+            obj.id = self.next_measurement_id
+            self.next_measurement_id += 1
 
         self.added.append(obj)
 
@@ -119,3 +121,51 @@ def test_save_measurement_persists_dynamic_metric_definitions_and_samples():
     }
     assert {sample.provider_measurement_id for sample in samples} == {entry.id}
     assert {sample.unit for sample in samples} == {"%", "W"}
+
+
+def test_identical_polls_create_distinct_measurements_and_metric_samples():
+    session = FakeSession()
+    repo = MeasurementRepository(session)
+    provider = SimpleNamespace(
+        id=7,
+        has_power_meter=True,
+        has_energy_storage=True,
+    )
+    measurement = NormalizedMeasurement(
+        provider_id=7,
+        value=820.0,
+        unit=PowerUnit.WATT.value,
+        measured_at=datetime(2026, 3, 10, 12, 0, tzinfo=timezone.utc),
+        metadata={},
+        extra_metrics=[
+            NormalizedMetric(
+                key="battery_soc",
+                value=55.0,
+                unit=PowerUnit.PERCENT.value,
+                label="Battery SOC",
+                chart_type=TelemetryChartType.LINE,
+                aggregation_mode=TelemetryAggregationMode.RAW,
+                capability_tag=ProviderTelemetryCapability.ENERGY_STORAGE,
+            )
+        ],
+    )
+
+    first_entry = repo.save_measurement(provider, measurement)
+    second_entry = repo.save_measurement(provider, measurement)
+
+    entries = [
+        obj for obj in session.added if getattr(obj, "__tablename__", None) == "provider_measurements"
+    ]
+    samples = [
+        obj for obj in session.added if getattr(obj, "__tablename__", None) == "provider_metric_samples"
+    ]
+
+    assert first_entry is not None
+    assert second_entry is not None
+    assert first_entry.id != second_entry.id
+    assert [entry.id for entry in entries] == [first_entry.id, second_entry.id]
+    assert len(samples) == 2
+    assert {sample.provider_measurement_id for sample in samples} == {
+        first_entry.id,
+        second_entry.id,
+    }

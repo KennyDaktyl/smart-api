@@ -15,6 +15,8 @@ def _build_adapter() -> GoodWeProviderAdapter:
         provider_id=7,
         provider_external_id="station-1",
         provider_power_source=ProviderPowerSource.METER,
+        provider_has_power_meter=True,
+        provider_has_energy_storage=True,
     )
 
 
@@ -77,3 +79,30 @@ def test_goodwe_fetch_measurement_uses_negative_grid_metric_for_import(monkeypat
     assert measurement.value == -410.0
     assert metrics["grid_power"].value == -410.0
     assert "battery_soc" not in metrics
+
+
+def test_goodwe_fetch_measurement_skips_metrics_when_provider_flags_disabled(monkeypatch):
+    adapter = GoodWeProviderAdapter(
+        username="user",
+        password="secret",
+        provider_id=7,
+        provider_external_id="station-1",
+        provider_power_source=ProviderPowerSource.METER,
+        provider_has_power_meter=False,
+        provider_has_energy_storage=False,
+    )
+    snapshot = {
+        "hasPowerflow": True,
+        "powerflow": {
+            "grid": "820W",
+            "loadStatus": -1,
+            "soc": "63",
+            "pv": "1450W",
+        },
+    }
+    monkeypatch.setattr(adapter, "_get_powerflow_snapshot", lambda _: snapshot)
+
+    measurement = adapter.fetch_measurement()
+
+    assert measurement.value == 820.0
+    assert measurement.extra_metrics == []

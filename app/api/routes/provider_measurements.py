@@ -10,7 +10,11 @@ from sqlalchemy.orm import Session
 
 from smart_common.core.db import get_db
 from smart_common.core.dependencies import get_current_user
-from smart_common.enums.provider_telemetry import TelemetryAggregationMode
+from smart_common.enums.provider_telemetry import (
+    ProviderTelemetryCapability,
+    TelemetryAggregationMode,
+    TelemetryChartType,
+)
 from smart_common.enums.unit import PowerUnit
 from smart_common.models.device import Device
 from smart_common.models.microcontroller import Microcontroller
@@ -24,6 +28,7 @@ from smart_common.schemas.provider_measurement_schemas import (
     DayEnergyOut,
     HourlyEnergyPoint,
     PowerEntryPoint,
+    ProviderTelemetryMetricDefinition,
     ProviderMetricHourlyPoint,
     ProviderMetricPoint,
     ProviderMetricSeriesOut,
@@ -32,6 +37,7 @@ from smart_common.schemas.provider_measurement_schemas import (
     ProviderEnergySeriesOut,
     ProviderPowerSeriesOut,
 )
+from smart_common.schemas.provider_schema import ProviderTelemetryResponse
 from smart_common.services.energy_calculation_service import (
     EnergyCalculationService,
     PowerSample,
@@ -44,6 +50,9 @@ provider_measurements_router = APIRouter(
     tags=["Provider Telemetry"],
 )
 
+BATTERY_SOC_METRIC_KEY = "battery_soc"
+GRID_POWER_METRIC_KEY = "grid_power"
+
 
 @provider_measurements_router.get(
     "/provider/{provider_uuid}/energy",
@@ -55,89 +64,20 @@ def list_provider_energy(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> ProviderEnergySeriesOut:
-
-    provider = ProviderRepository(db).get_for_user_by_uuid(
+    provider = _get_provider_or_404(
+        db=db,
         provider_uuid=provider_uuid,
         user_id=current_user.id,
     )
-    if not provider:
-        raise HTTPException(status_code=404, detail="Provider not found")
 
     now = datetime.now(timezone.utc)
-
     start, end = _resolve_day_window(selected_date=selected_date, now=now)
-
     repo = MeasurementRepository(db)
-
-    raw_samples = repo.list_power_samples(
-        provider_id=provider.id,
-        date_start=start,
-        date_end=end,
-    )
-
-    samples = [
-        PowerSample(ts=_to_utc_aware(ts), value=float(p))
-        for ts, p in raw_samples
-    ]
-
-    raw_measurements = repo.list_measurements(
-        provider_id=provider.id,
-        date_start=start,
-        date_end=end,
-    )
-    hourly_energy = EnergyCalculationService.integrate_hourly(samples)
-
-    day_key = start.date().isoformat()
-    days: dict[str, DayEnergyOut] = {day_key: _empty_day(day_key)}
-
-    for measurement in raw_measurements:
-        measured_at = _to_utc_aware(measurement.measured_at)
-        measurement_day_key = measured_at.date().isoformat()
-        day = days.setdefault(measurement_day_key, _empty_day(measurement_day_key))
-        day.entries.append(
-            ProviderMeasurementResponse(
-                id=measurement.id,
-                measured_at=measured_at,
-                measured_value=(
-                    float(measurement.measured_value)
-                    if measurement.measured_value is not None
-                    else None
-                ),
-                measured_unit=measurement.measured_unit,
-                metadata_payload=dict(measurement.metadata_payload or {}),
-                extra_data=dict(measurement.extra_data or {}),
-            )
-        )
-
-    for hour_dt, energy in hourly_energy.items():
-        hour_day_key = hour_dt.date().isoformat()
-
-        day = days.setdefault(
-            hour_day_key,
-            _empty_day(hour_day_key),
-        )
-
-        day.hours.append(
-            HourlyEnergyPoint(
-                hour=hour_dt,
-                energy=round(energy, 5),
-            )
-        )
-
-        day.total_energy += energy
-        day.export_energy += max(0.0, energy)
-        day.import_energy += max(0.0, -energy)
-
-    for day in days.values():
-        day.hours.sort(key=lambda point: point.hour)
-        day.entries.sort(key=lambda point: point.measured_at)
-        day.total_energy = round(day.total_energy, 5)
-        day.import_energy = round(day.import_energy, 5)
-        day.export_energy = round(day.export_energy, 5)
-
-    return ProviderEnergySeriesOut(
-        unit=_energy_unit_from_power(provider.unit),
-        days=days,
+    return _build_provider_energy_series(
+        provider=provider,
+        repo=repo,
+        start=start,
+        end=end,
     )
 
 
@@ -151,12 +91,11 @@ def list_provider_power(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> ProviderPowerSeriesOut:
-    provider = ProviderRepository(db).get_for_user_by_uuid(
+    provider = _get_provider_or_404(
+        db=db,
         provider_uuid=provider_uuid,
         user_id=current_user.id,
     )
-    if not provider:
-        raise HTTPException(status_code=404, detail="Provider not found")
 
     if provider.kind != ProviderKind.POWER:
         raise HTTPException(
@@ -197,6 +136,58 @@ def list_provider_power(
 
 
 @provider_measurements_router.get(
+    "/provider/{provider_uuid}/telemetry",
+    response_model=ProviderTelemetryResponse,
+)
+def get_provider_telemetry(
+    provider_uuid: UUID,
+    selected_date: date_type | None = Query(None, alias="date"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> ProviderTelemetryResponse:
+    provider = _get_provider_or_404(
+        db=db,
+        provider_uuid=provider_uuid,
+        user_id=current_user.id,
+    )
+
+    now = datetime.now(timezone.utc)
+    start, end = _resolve_day_window(selected_date=selected_date, now=now)
+    repo = MeasurementRepository(db)
+    energy_series = _build_provider_energy_series(
+        provider=provider,
+        repo=repo,
+        start=start,
+        end=end,
+    )
+    day_key = start.date().isoformat()
+    definitions = _list_metric_definitions_for_provider(
+        provider=provider,
+        repo=repo,
+    )
+
+    metrics = [
+        _build_metric_series(
+            repo=repo,
+            provider_id=provider.id,
+            definition=definition,
+            start=start,
+            end=end,
+        )
+        for definition in definitions
+    ]
+
+    return ProviderTelemetryResponse(
+        provider=provider,
+        date=day_key,
+        measured_unit=_resolve_measured_unit_from_day(energy_series.days[day_key]),
+        energy_unit=energy_series.unit,
+        day=energy_series.days[day_key],
+        metrics=metrics,
+    )
+
+
+@provider_measurements_router.get(
     "/provider/{provider_uuid}/metrics/{metric_key}",
     response_model=ProviderMetricSeriesOut,
 )
@@ -207,72 +198,28 @@ def get_provider_metric_series(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> ProviderMetricSeriesOut:
-    provider = ProviderRepository(db).get_for_user_by_uuid(
+    provider = _get_provider_or_404(
+        db=db,
         provider_uuid=provider_uuid,
         user_id=current_user.id,
     )
-    if not provider:
-        raise HTTPException(status_code=404, detail="Provider not found")
 
     now = datetime.now(timezone.utc)
     start, end = _resolve_day_window(selected_date=selected_date, now=now)
     repo = MeasurementRepository(db)
-    definition = repo.get_metric_definition(
-        provider_id=provider.id,
+    definition = _get_metric_definition_for_provider(
+        provider=provider,
+        repo=repo,
         metric_key=metric_key,
     )
     if definition is None:
         raise HTTPException(status_code=404, detail="Metric not found")
-
-    raw_samples = repo.list_metric_samples(
+    return _build_metric_series(
+        repo=repo,
         provider_id=provider.id,
-        metric_key=metric_key,
-        date_start=start,
-        date_end=end,
-    )
-
-    entries: list[ProviderMetricPoint] = []
-    hours: list[ProviderMetricHourlyPoint] = []
-    output_unit = definition.unit
-
-    if definition.aggregation_mode == TelemetryAggregationMode.RAW:
-        entries = [
-            ProviderMetricPoint(
-                timestamp=_to_utc_aware(sample.measured_at),
-                value=round(float(sample.value), 5),
-            )
-            for sample in raw_samples
-        ]
-    elif definition.aggregation_mode == TelemetryAggregationMode.HOURLY_INTEGRAL:
-        hourly_energy = EnergyCalculationService.integrate_hourly(
-            [
-                PowerSample(
-                    ts=_to_utc_aware(sample.measured_at),
-                    value=float(sample.value),
-                )
-                for sample in raw_samples
-            ]
-        )
-        output_unit = _energy_unit_from_unit(definition.unit)
-        hours = [
-            ProviderMetricHourlyPoint(
-                hour=hour_dt,
-                value=round(energy, 5),
-            )
-            for hour_dt, energy in sorted(hourly_energy.items())
-        ]
-
-    return ProviderMetricSeriesOut(
-        metric_key=definition.metric_key,
-        label=definition.label,
-        unit=output_unit,
-        source_unit=definition.unit,
-        chart_type=definition.chart_type,
-        aggregation_mode=definition.aggregation_mode,
-        capability_tag=definition.capability_tag,
-        date=start.date().isoformat(),
-        entries=entries,
-        hours=hours,
+        definition=definition,
+        start=start,
+        end=end,
     )
 
 
@@ -285,12 +232,11 @@ def get_provider_current_hour_pool(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> ProviderCurrentHourPoolOut:
-    provider = ProviderRepository(db).get_for_user_by_uuid(
+    provider = _get_provider_or_404(
+        db=db,
         provider_uuid=provider_uuid,
         user_id=current_user.id,
     )
-    if not provider:
-        raise HTTPException(status_code=404, detail="Provider not found")
 
     if provider.kind != ProviderKind.POWER:
         raise HTTPException(
@@ -384,6 +330,239 @@ def get_provider_current_hour_pool(
         provider_includes_device_consumption=provider_includes_device_consumption,
         devices_considered=devices_considered,
     )
+
+
+def _get_provider_or_404(
+    *,
+    db: Session,
+    provider_uuid: UUID,
+    user_id: int,
+):
+    provider = ProviderRepository(db).get_for_user_by_uuid(
+        provider_uuid=provider_uuid,
+        user_id=user_id,
+    )
+    if not provider:
+        raise HTTPException(status_code=404, detail="Provider not found")
+    return provider
+
+
+def _build_provider_energy_series(
+    *,
+    provider,
+    repo: MeasurementRepository,
+    start: datetime,
+    end: datetime,
+) -> ProviderEnergySeriesOut:
+    raw_samples = repo.list_power_samples(
+        provider_id=provider.id,
+        date_start=start,
+        date_end=end,
+    )
+    samples = [
+        PowerSample(ts=_to_utc_aware(ts), value=float(value))
+        for ts, value in raw_samples
+    ]
+    raw_measurements = repo.list_measurements(
+        provider_id=provider.id,
+        date_start=start,
+        date_end=end,
+    )
+    hourly_energy = EnergyCalculationService.integrate_hourly(samples)
+
+    day_key = start.date().isoformat()
+    days: dict[str, DayEnergyOut] = {day_key: _empty_day(day_key)}
+
+    for measurement in raw_measurements:
+        measured_at = _to_utc_aware(measurement.measured_at)
+        measurement_day_key = measured_at.date().isoformat()
+        day = days.setdefault(measurement_day_key, _empty_day(measurement_day_key))
+        day.entries.append(
+            ProviderMeasurementResponse(
+                id=measurement.id,
+                measured_at=measured_at,
+                measured_value=(
+                    float(measurement.measured_value)
+                    if measurement.measured_value is not None
+                    else None
+                ),
+                measured_unit=measurement.measured_unit,
+                metadata_payload=dict(measurement.metadata_payload or {}),
+                extra_data=dict(measurement.extra_data or {}),
+            )
+        )
+
+    for hour_dt, energy in hourly_energy.items():
+        hour_day_key = hour_dt.date().isoformat()
+        day = days.setdefault(hour_day_key, _empty_day(hour_day_key))
+        day.hours.append(
+            HourlyEnergyPoint(
+                hour=hour_dt,
+                energy=round(energy, 5),
+            )
+        )
+        day.total_energy += energy
+        day.export_energy += max(0.0, energy)
+        day.import_energy += max(0.0, -energy)
+
+    for day in days.values():
+        day.hours.sort(key=lambda point: point.hour)
+        day.entries.sort(key=lambda point: point.measured_at)
+        day.total_energy = round(day.total_energy, 5)
+        day.import_energy = round(day.import_energy, 5)
+        day.export_energy = round(day.export_energy, 5)
+
+    return ProviderEnergySeriesOut(
+        unit=_energy_unit_from_power(provider.unit),
+        days=days,
+    )
+
+
+def _build_metric_series(
+    *,
+    repo: MeasurementRepository,
+    provider_id: int,
+    definition,
+    start: datetime,
+    end: datetime,
+) -> ProviderMetricSeriesOut:
+    raw_samples = repo.list_metric_samples(
+        provider_id=provider_id,
+        metric_key=definition.metric_key,
+        date_start=start,
+        date_end=end,
+    )
+
+    entries: list[ProviderMetricPoint] = []
+    hours: list[ProviderMetricHourlyPoint] = []
+    output_unit = definition.unit
+
+    if definition.aggregation_mode == TelemetryAggregationMode.RAW:
+        entries = [
+            ProviderMetricPoint(
+                timestamp=_to_utc_aware(sample.measured_at),
+                value=round(float(sample.value), 5),
+            )
+            for sample in raw_samples
+        ]
+    elif definition.aggregation_mode == TelemetryAggregationMode.HOURLY_INTEGRAL:
+        hourly_energy = EnergyCalculationService.integrate_hourly(
+            [
+                PowerSample(
+                    ts=_to_utc_aware(sample.measured_at),
+                    value=float(sample.value),
+                )
+                for sample in raw_samples
+            ]
+        )
+        output_unit = _energy_unit_from_unit(definition.unit)
+        hours = [
+            ProviderMetricHourlyPoint(
+                hour=hour_dt,
+                value=round(energy, 5),
+            )
+            for hour_dt, energy in sorted(hourly_energy.items())
+        ]
+
+    return ProviderMetricSeriesOut(
+        metric_key=definition.metric_key,
+        label=definition.label,
+        unit=output_unit,
+        source_unit=definition.unit,
+        chart_type=definition.chart_type,
+        aggregation_mode=definition.aggregation_mode,
+        capability_tag=definition.capability_tag,
+        date=start.date().isoformat(),
+        entries=entries,
+        hours=hours,
+    )
+
+
+def _list_metric_definitions_for_provider(
+    *,
+    provider,
+    repo: MeasurementRepository,
+) -> list[ProviderTelemetryMetricDefinition]:
+    definitions = {
+        definition.metric_key: ProviderTelemetryMetricDefinition.model_validate(
+            definition,
+            from_attributes=True,
+        )
+        for definition in repo.list_metric_definitions(provider_id=provider.id)
+    }
+
+    if provider.has_energy_storage and BATTERY_SOC_METRIC_KEY not in definitions:
+        definitions[BATTERY_SOC_METRIC_KEY] = _build_synthetic_metric_definition(
+            BATTERY_SOC_METRIC_KEY
+        )
+
+    if provider.has_power_meter and GRID_POWER_METRIC_KEY not in definitions:
+        definitions[GRID_POWER_METRIC_KEY] = _build_synthetic_metric_definition(
+            GRID_POWER_METRIC_KEY
+        )
+
+    return [
+        definitions[key]
+        for key in sorted(definitions.keys())
+    ]
+
+
+def _get_metric_definition_for_provider(
+    *,
+    provider,
+    repo: MeasurementRepository,
+    metric_key: str,
+) -> ProviderTelemetryMetricDefinition | None:
+    definition = repo.get_metric_definition(
+        provider_id=provider.id,
+        metric_key=metric_key,
+    )
+    if definition is not None:
+        return ProviderTelemetryMetricDefinition.model_validate(
+            definition,
+            from_attributes=True,
+        )
+
+    if provider.has_energy_storage and metric_key == BATTERY_SOC_METRIC_KEY:
+        return _build_synthetic_metric_definition(metric_key)
+
+    if provider.has_power_meter and metric_key == GRID_POWER_METRIC_KEY:
+        return _build_synthetic_metric_definition(metric_key)
+
+    return None
+
+
+def _build_synthetic_metric_definition(
+    metric_key: str,
+) -> ProviderTelemetryMetricDefinition:
+    if metric_key == BATTERY_SOC_METRIC_KEY:
+        return ProviderTelemetryMetricDefinition(
+            metric_key=BATTERY_SOC_METRIC_KEY,
+            label="Battery SOC",
+            unit=PowerUnit.PERCENT.value,
+            chart_type=TelemetryChartType.LINE,
+            aggregation_mode=TelemetryAggregationMode.RAW,
+            capability_tag=ProviderTelemetryCapability.ENERGY_STORAGE,
+        )
+
+    if metric_key == GRID_POWER_METRIC_KEY:
+        return ProviderTelemetryMetricDefinition(
+            metric_key=GRID_POWER_METRIC_KEY,
+            label="Grid power",
+            unit=PowerUnit.WATT.value,
+            chart_type=TelemetryChartType.BAR,
+            aggregation_mode=TelemetryAggregationMode.HOURLY_INTEGRAL,
+            capability_tag=ProviderTelemetryCapability.POWER_METER,
+        )
+
+    raise HTTPException(status_code=404, detail="Metric not found")
+
+
+def _resolve_measured_unit_from_day(day: DayEnergyOut) -> str | None:
+    for entry in day.entries:
+        if entry.measured_unit:
+            return entry.measured_unit
+    return None
 
 
 def _resolve_day_window(

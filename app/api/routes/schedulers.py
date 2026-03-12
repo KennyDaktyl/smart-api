@@ -7,6 +7,7 @@ from smart_common.core.db import get_db
 from smart_common.core.dependencies import get_current_user
 from smart_common.models.user import User
 from smart_common.providers.enums import ProviderKind
+from smart_common.repositories.device import DeviceRepository
 from smart_common.repositories.provider import ProviderRepository
 from smart_common.repositories.scheduler import SchedulerRepository
 from smart_common.schemas.scheduler_schema import (
@@ -59,7 +60,7 @@ def list_schedulers(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    service = SchedulerService(SchedulerRepository)
+    service = SchedulerService(SchedulerRepository, DeviceRepository)
     schedulers = service.list_for_user(db=db, user_id=current_user.id)
     return [
         SchedulerResponse.model_validate(item, from_attributes=True)
@@ -75,7 +76,7 @@ def create_scheduler(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    service = SchedulerService(SchedulerRepository)
+    service = SchedulerService(SchedulerRepository, DeviceRepository)
     payload_data = payload.model_dump()
     _validate_slot_providers(
         db=db,
@@ -136,7 +137,7 @@ def update_scheduler(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    service = SchedulerService(SchedulerRepository)
+    service = SchedulerService(SchedulerRepository, DeviceRepository)
     payload_data = payload.model_dump()
     _validate_slot_providers(
         db=db,
@@ -158,7 +159,7 @@ def delete_scheduler(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    service = SchedulerService(SchedulerRepository)
+    service = SchedulerService(SchedulerRepository, DeviceRepository)
     service.delete_scheduler(
         db=db,
         user_id=current_user.id,

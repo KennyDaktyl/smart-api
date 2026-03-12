@@ -15,6 +15,7 @@ from smart_common.schemas.microcontroller_schema import (
     MicrocontrollerCreateRequest,
     MicrocontrollerResponse,
     MicrocontrollerSetProviderRequest,
+    MicrocontrollerUpdateRequest,
 )
 from smart_common.services.microcontroller_service import MicrocontrollerService
 
@@ -105,12 +106,13 @@ def create_microcontroller(
         },
     )
 
-    repo = MicrocontrollerRepository(db)
-
     data = payload.model_dump(exclude_unset=True)
-    data["user_id"] = current_user.id
-
-    microcontroller = repo.create(data)
+    service = MicrocontrollerService(repo_factory=MicrocontrollerRepository)
+    microcontroller = service.register_microcontroller_for_user(
+        db,
+        user_id=current_user.id,
+        payload=data,
+    )
 
     return MicrocontrollerResponse.model_validate(
         microcontroller,
@@ -145,6 +147,36 @@ def delete_microcontroller(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Microcontroller not found",
         )
+
+
+@microcontroller_router.patch(
+    "/{microcontroller_uuid}",
+    response_model=MicrocontrollerResponse,
+    summary="Update microcontroller",
+)
+def update_microcontroller(
+    microcontroller_uuid: UUID,
+    payload: MicrocontrollerUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> MicrocontrollerResponse:
+    service = MicrocontrollerService(repo_factory=MicrocontrollerRepository)
+
+    data = payload.model_dump(exclude_unset=True)
+    assigned_sensors = data.pop("assigned_sensors", None)
+
+    microcontroller = service.update_microcontroller_for_user(
+        db,
+        microcontroller_uuid=microcontroller_uuid,
+        user_id=current_user.id,
+        data=data,
+        assigned_sensors=assigned_sensors,
+    )
+
+    return MicrocontrollerResponse.model_validate(
+        microcontroller,
+        from_attributes=True,
+    )
 
 
 @microcontroller_router.put(

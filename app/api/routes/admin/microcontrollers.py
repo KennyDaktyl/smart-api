@@ -141,7 +141,7 @@ def admin_get_microcontroller(
     response_model=MicrocontrollerResponse,
     summary="Update microcontroller by id (admin)",
 )
-def admin_update_microcontroller(
+async def admin_update_microcontroller(
     microcontroller_id: int,
     payload: MicrocontrollerAdminUpdateRequest,
     db: Session = Depends(get_db),
@@ -157,6 +157,12 @@ def admin_update_microcontroller(
         data=data,
         assigned_sensors=assigned_sensors,
     )
+
+    if assigned_sensors is not None or "max_devices" in data:
+        await service.sync_agent_config_from_microcontroller(
+            db,
+            microcontroller=microcontroller,
+        )
 
     return MicrocontrollerResponse.model_validate(
         microcontroller,

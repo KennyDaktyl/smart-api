@@ -154,7 +154,7 @@ def delete_microcontroller(
     response_model=MicrocontrollerResponse,
     summary="Update microcontroller",
 )
-def update_microcontroller(
+async def update_microcontroller(
     microcontroller_uuid: UUID,
     payload: MicrocontrollerUpdateRequest,
     db: Session = Depends(get_db),
@@ -172,6 +172,12 @@ def update_microcontroller(
         data=data,
         assigned_sensors=assigned_sensors,
     )
+
+    if assigned_sensors is not None or "max_devices" in data:
+        await service.sync_agent_config_from_microcontroller(
+            db,
+            microcontroller=microcontroller,
+        )
 
     return MicrocontrollerResponse.model_validate(
         microcontroller,

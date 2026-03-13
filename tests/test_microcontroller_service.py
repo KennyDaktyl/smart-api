@@ -1,4 +1,5 @@
 from uuid import uuid4
+import asyncio
 
 import pytest
 from fastapi import HTTPException
@@ -105,3 +106,62 @@ def test_update_microcontroller_for_user_rejects_duplicate_sensors():
 
     assert exc.value.status_code == 422
     assert exc.value.detail == "assigned_sensors must not contain duplicates"
+
+
+def test_sync_agent_config_from_microcontroller_updates_available_sensors_and_device_max():
+    microcontroller = _build_microcontroller()
+    microcontroller.max_devices = 6
+    microcontroller.sensor_capabilities = [
+        MicrocontrollerSensorCapability(sensor_type="ds18b20"),
+        MicrocontrollerSensorCapability(sensor_type="dht22"),
+    ]
+    service = MicrocontrollerService(repo_factory=lambda _db: _FakeRepo(microcontroller))
+    published_payloads = []
+
+    async def _fake_publish_microcontroller_command(*, microcontroller_uuid, payload):
+        published_payloads.append((microcontroller_uuid, payload))
+        if payload.command == "READ_CONFIG_FILES":
+            return {
+                "ok": True,
+                "command_id": payload.command_id,
+                "config_json": {
+                    "config_version": 2,
+                    "microcontroller_uuid": "legacy-uuid",
+                    "device_max": 2,
+                    "available_sensors": ["legacy"],
+                    "heartbeat_interval": 60,
+                },
+                "hardware_config_json": {
+                    "config_version": 2,
+                    "devices": {},
+                    "sensors": {},
+                },
+                "env_file_content": "A=1\n",
+            }
+        return {
+            "ok": True,
+            "command_id": payload.command_id,
+            "message": "Configuration files saved",
+        }
+
+    service._publish_microcontroller_command = _fake_publish_microcontroller_command
+
+    asyncio.run(
+        service.sync_agent_config_from_microcontroller(
+            _FakeSession(),
+            microcontroller=microcontroller,
+        )
+    )
+
+    assert len(published_payloads) == 2
+    _, write_payload = published_payloads[1]
+    assert write_payload.command == "WRITE_CONFIG_FILES"
+    assert write_payload.config_json["microcontroller_uuid"] == str(microcontroller.uuid)
+    assert write_payload.config_json["device_max"] == 6
+    assert write_payload.config_json["available_sensors"] == ["ds18b20", "dht22"]
+    assert write_payload.config_json["heartbeat_interval"] == 60
+    assert write_payload.hardware_config_json == {
+        "config_version": 2,
+        "devices": {},
+        "sensors": {},
+    }

@@ -8,6 +8,7 @@ from smart_common.core.dependencies import get_current_user
 from smart_common.models.user import User
 from smart_common.providers.enums import ProviderKind
 from smart_common.repositories.device import DeviceRepository
+from smart_common.repositories.microcontroller import MicrocontrollerRepository
 from smart_common.repositories.provider import ProviderRepository
 from smart_common.repositories.scheduler import SchedulerRepository
 from smart_common.schemas.scheduler_schema import (
@@ -17,6 +18,7 @@ from smart_common.schemas.scheduler_schema import (
     SchedulerResponse,
     SchedulerUpdateRequest,
 )
+from smart_common.services.device_service import DeviceService
 from smart_common.services.scheduler_service import SchedulerService
 
 logger = logging.getLogger(__name__)
@@ -154,12 +156,22 @@ def update_scheduler(
 
 
 @scheduler_router.delete("/{scheduler_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_scheduler(
+async def delete_scheduler(
     scheduler_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     service = SchedulerService(SchedulerRepository, DeviceRepository)
+    device_service = DeviceService(
+        repo_factory=DeviceRepository,
+        microcontroller_repo_factory=MicrocontrollerRepository,
+        scheduler_repo_factory=SchedulerRepository,
+    )
+    await device_service.disable_scheduler_devices(
+        db=db,
+        user_id=current_user.id,
+        scheduler_id=scheduler_id,
+    )
     service.delete_scheduler(
         db=db,
         user_id=current_user.id,

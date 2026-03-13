@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import defaultdict
 import logging
 from datetime import date as date_type
 from datetime import datetime, timedelta, timezone
@@ -21,13 +22,18 @@ from smart_common.models.microcontroller import Microcontroller
 from smart_common.models.user import User
 from smart_common.providers.enums import ProviderKind, ProviderType
 from smart_common.repositories.device_event import DeviceEventRepository
+from smart_common.repositories.market_energy_price import MarketEnergyPriceRepository
 from smart_common.repositories.provider import ProviderRepository
 from smart_common.repositories.measurement_repository import MeasurementRepository
 from smart_common.schemas.provider_measurement_schemas import (
     DayPowerOut,
     DayEnergyOut,
     HourlyEnergyPoint,
+    HourlyRevenuePoint,
+    MarketEnergyPricePointOut,
     PowerEntryPoint,
+    ProviderMatchedRevenueOut,
+    ProviderMarketPriceOut,
     ProviderTelemetryMetricDefinition,
     ProviderMetricHourlyPoint,
     ProviderMetricPoint,
@@ -73,11 +79,15 @@ def list_provider_energy(
     now = datetime.now(timezone.utc)
     start, end = _resolve_day_window(selected_date=selected_date, now=now)
     repo = MeasurementRepository(db)
+    max_interval_seconds = _resolve_sample_hold_seconds(
+        provider.default_expected_interval_sec
+    )
     return _build_provider_energy_series(
         provider=provider,
         repo=repo,
         start=start,
         end=end,
+        max_interval_seconds=max_interval_seconds,
     )
 
 
@@ -153,14 +163,33 @@ def get_provider_telemetry(
 
     now = datetime.now(timezone.utc)
     start, end = _resolve_day_window(selected_date=selected_date, now=now)
+    history_end = start + timedelta(days=1) - timedelta(microseconds=1)
     repo = MeasurementRepository(db)
+    market_repo = MarketEnergyPriceRepository(db)
+    max_interval_seconds = _resolve_sample_hold_seconds(
+        provider.default_expected_interval_sec
+    )
     energy_series = _build_provider_energy_series(
         provider=provider,
         repo=repo,
         start=start,
         end=end,
+        max_interval_seconds=max_interval_seconds,
     )
     day_key = start.date().isoformat()
+    day = energy_series.days[day_key]
+    day_samples = _build_day_power_samples(
+        repo=repo,
+        provider_id=provider.id,
+        start=start,
+        end=end,
+        carry_forward_seconds=max_interval_seconds,
+    )
+    revenue_market_entries = market_repo.list_between(
+        market="RCE",
+        date_start=start,
+        date_end=end + timedelta(microseconds=1),
+    )
     definitions = _list_metric_definitions_for_provider(
         provider=provider,
         repo=repo,
@@ -177,13 +206,42 @@ def get_provider_telemetry(
         for definition in definitions
     ]
 
+    reference_ts = end
+    settlement_price = _build_market_price_context(
+        repo=market_repo,
+        market="RCE",
+        label="RCE",
+        start=start,
+        end=history_end,
+        reference_ts=reference_ts,
+        energy_unit=energy_series.unit,
+    )
+    forecast_price = _build_market_price_context(
+        repo=market_repo,
+        market="RCE_FCST",
+        label="Prognoza PSE",
+        start=start,
+        end=history_end,
+        reference_ts=reference_ts,
+        energy_unit=energy_series.unit,
+    )
+
     return ProviderTelemetryResponse(
         provider=provider,
         date=day_key,
-        measured_unit=_resolve_measured_unit_from_day(energy_series.days[day_key]),
+        measured_unit=_resolve_measured_unit_from_day(day),
         energy_unit=energy_series.unit,
-        day=energy_series.days[day_key],
+        day=day,
         metrics=metrics,
+        settlement_price=settlement_price,
+        forecast_price=forecast_price,
+        matched_revenue=_build_matched_revenue_summary(
+            samples=day_samples,
+            market_entries=revenue_market_entries,
+            energy_unit=energy_series.unit,
+            hourly_points=day.hours,
+            max_interval_seconds=max_interval_seconds,
+        ),
     )
 
 
@@ -253,6 +311,9 @@ def get_provider_current_hour_pool(
 
     now = datetime.now(timezone.utc)
     start, end = _resolve_hour_window(now=now)
+    max_interval_seconds = _resolve_sample_hold_seconds(
+        provider.default_expected_interval_sec
+    )
 
     measurement_repo = MeasurementRepository(db)
     previous_sample = measurement_repo.get_last_power_sample_before(
@@ -270,9 +331,13 @@ def get_provider_current_hour_pool(
         previous_sample=previous_sample,
         start=start,
         end=end,
+        carry_forward_seconds=max_interval_seconds,
     )
 
-    production_energy = _integrate_window_energy(hour_samples)
+    production_energy = _integrate_window_energy(
+        hour_samples,
+        max_interval_seconds=max_interval_seconds,
+    )
     current_power = hour_samples[-1].value if hour_samples else None
 
     provider_includes_device_consumption = provider.provider_type != ProviderType.API
@@ -353,22 +418,24 @@ def _build_provider_energy_series(
     repo: MeasurementRepository,
     start: datetime,
     end: datetime,
+    max_interval_seconds: float | None = None,
 ) -> ProviderEnergySeriesOut:
-    raw_samples = repo.list_power_samples(
+    samples = _build_day_power_samples(
+        repo=repo,
         provider_id=provider.id,
-        date_start=start,
-        date_end=end,
+        start=start,
+        end=end,
+        carry_forward_seconds=max_interval_seconds,
     )
-    samples = [
-        PowerSample(ts=_to_utc_aware(ts), value=float(value))
-        for ts, value in raw_samples
-    ]
     raw_measurements = repo.list_measurements(
         provider_id=provider.id,
         date_start=start,
         date_end=end,
     )
-    hourly_energy = EnergyCalculationService.integrate_hourly(samples)
+    hourly_energy = EnergyCalculationService.integrate_hourly(
+        samples,
+        max_interval_seconds=max_interval_seconds,
+    )
 
     day_key = start.date().isoformat()
     days: dict[str, DayEnergyOut] = {day_key: _empty_day(day_key)}
@@ -565,6 +632,195 @@ def _resolve_measured_unit_from_day(day: DayEnergyOut) -> str | None:
     return None
 
 
+def _build_day_power_samples(
+    *,
+    repo: MeasurementRepository,
+    provider_id: int,
+    start: datetime,
+    end: datetime,
+    carry_forward_seconds: float | None = None,
+) -> list[PowerSample]:
+    previous_sample = repo.get_last_power_sample_before(
+        provider_id=provider_id,
+        before=start,
+    )
+    if previous_sample is not None:
+        previous_ts, _ = previous_sample
+        if _to_utc_aware(previous_ts).date() != start.date():
+            previous_sample = None
+    raw_samples = repo.list_power_samples(
+        provider_id=provider_id,
+        date_start=start,
+        date_end=end,
+    )
+    return _build_window_samples(
+        raw_samples=raw_samples,
+        previous_sample=previous_sample,
+        start=start,
+        end=end,
+        carry_forward_seconds=carry_forward_seconds,
+    )
+
+
+def _build_market_price_context(
+    *,
+    repo: MarketEnergyPriceRepository,
+    market: str,
+    label: str,
+    start: datetime,
+    end: datetime,
+    reference_ts: datetime,
+    energy_unit: str | None,
+) -> ProviderMarketPriceOut | None:
+    active_entry = repo.get_active_at(market=market, timestamp=reference_ts)
+    if active_entry is None:
+        active_entry = repo.get_latest_before(market=market, timestamp=reference_ts)
+    if active_entry is None:
+        return None
+
+    history_entries = repo.list_between(
+        market=market,
+        date_start=start,
+        date_end=end + timedelta(microseconds=1),
+    )
+    history = [
+        MarketEnergyPricePointOut(
+            interval_start=_to_utc_aware(entry.interval_start),
+            interval_end=_to_utc_aware(entry.interval_end),
+            price=round(float(entry.price_value), 6),
+            currency=entry.currency,
+            unit=entry.price_unit,
+        )
+        for entry in history_entries
+    ]
+
+    price = round(float(active_entry.price_value), 6)
+    price_per_energy_unit = _convert_market_price_to_energy_unit(
+        price=price,
+        price_unit=active_entry.price_unit,
+        energy_unit=energy_unit,
+    )
+
+    return ProviderMarketPriceOut(
+        market=active_entry.market,
+        label=label,
+        price=price,
+        currency=active_entry.currency,
+        unit=active_entry.price_unit,
+        interval_start=_to_utc_aware(active_entry.interval_start),
+        interval_end=_to_utc_aware(active_entry.interval_end),
+        source_updated_at=(
+            _to_utc_aware(active_entry.source_updated_at)
+            if active_entry.source_updated_at is not None
+            else None
+        ),
+        price_per_energy_unit=price_per_energy_unit,
+        energy_unit=energy_unit,
+        history=history,
+    )
+
+
+def _build_matched_revenue_summary(
+    *,
+    samples: list[PowerSample],
+    market_entries: list[object],
+    energy_unit: str | None,
+    hourly_points: list[HourlyEnergyPoint] | None = None,
+    max_interval_seconds: float | None = None,
+) -> ProviderMatchedRevenueOut | None:
+    if not samples or len(samples) < 2 or not market_entries:
+        return None
+
+    total_export_energy = 0.0
+    total_revenue = 0.0
+    matched_intervals = 0
+    hourly_revenue: dict[datetime, float] = defaultdict(float)
+    hourly_export_energy: dict[datetime, float] = defaultdict(float)
+
+    sorted_entries = sorted(
+        market_entries,
+        key=lambda entry: _to_utc_aware(entry.interval_start),
+    )
+
+    for interval_start, interval_end, power in _iter_effective_power_intervals(
+        samples=samples,
+        max_interval_seconds=max_interval_seconds,
+    ):
+        cursor = interval_start
+        while cursor < interval_end:
+            market_entry = _find_market_entry_for_timestamp(
+                market_entries=sorted_entries,
+                timestamp=cursor,
+            )
+            if market_entry is None:
+                break
+
+            market_end = _to_utc_aware(market_entry.interval_end)
+            hour_end = cursor.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+            segment_end = min(interval_end, market_end, hour_end)
+            dt_hours = (segment_end - cursor).total_seconds() / 3600.0
+            if dt_hours <= 0:
+                break
+
+            energy = power * dt_hours
+            export_energy = max(0.0, energy)
+            price_per_energy_unit = _convert_market_price_to_energy_unit(
+                price=float(market_entry.price_value),
+                price_unit=market_entry.price_unit,
+                energy_unit=energy_unit,
+            )
+
+            if export_energy > 0 and price_per_energy_unit is not None:
+                hour_bucket = cursor.replace(minute=0, second=0, microsecond=0)
+                total_export_energy += export_energy
+                total_revenue += export_energy * price_per_energy_unit
+                matched_intervals += 1
+                hourly_export_energy[hour_bucket] += export_energy
+                hourly_revenue[hour_bucket] += export_energy * price_per_energy_unit
+
+            cursor = segment_end
+
+    if matched_intervals == 0:
+        return None
+
+    if hourly_points is not None:
+        for point in hourly_points:
+            hour_dt = _to_utc_aware(point.hour)
+            point.revenue = round(hourly_revenue.get(hour_dt, 0.0), 6)
+
+    first_entry = sorted_entries[0]
+    return ProviderMatchedRevenueOut(
+        market=str(first_entry.market),
+        label="RCE dopasowane do interwału próbki",
+        currency=str(first_entry.currency),
+        energy_unit=energy_unit,
+        total_export_energy=round(total_export_energy, 5),
+        total_revenue=round(total_revenue, 6),
+        matched_intervals=matched_intervals,
+        hours=[
+            HourlyRevenuePoint(
+                hour=hour_dt,
+                revenue=round(revenue, 6),
+                export_energy=round(hourly_export_energy.get(hour_dt, 0.0), 5),
+            )
+            for hour_dt, revenue in sorted(hourly_revenue.items())
+        ],
+    )
+
+
+def _find_market_entry_for_timestamp(
+    *,
+    market_entries: list[object],
+    timestamp: datetime,
+):
+    for entry in market_entries:
+        interval_start = _to_utc_aware(entry.interval_start)
+        interval_end = _to_utc_aware(entry.interval_end)
+        if interval_start <= timestamp < interval_end:
+            return entry
+    return None
+
+
 def _resolve_day_window(
     *,
     selected_date: date_type | None,
@@ -597,12 +853,19 @@ def _build_window_samples(
     previous_sample: tuple[datetime, float] | None,
     start: datetime,
     end: datetime,
+    carry_forward_seconds: float | None = None,
 ) -> list[PowerSample]:
     points: list[PowerSample] = []
 
     if previous_sample:
-        _, previous_value = previous_sample
-        points.append(PowerSample(ts=start, value=float(previous_value)))
+        previous_ts, previous_value = previous_sample
+        previous_ts_utc = _to_utc_aware(previous_ts)
+        if _is_sample_fresh_for_boundary(
+            sample_ts=previous_ts_utc,
+            boundary_ts=start,
+            carry_forward_seconds=carry_forward_seconds,
+        ):
+            points.append(PowerSample(ts=start, value=float(previous_value)))
 
     for ts, value in raw_samples:
         ts_utc = _to_utc_aware(ts)
@@ -623,14 +886,61 @@ def _build_window_samples(
             deduped.append(sample)
 
     if deduped[-1].ts < end:
-        deduped.append(PowerSample(ts=end, value=deduped[-1].value))
+        carry_until = end
+        if carry_forward_seconds is not None and carry_forward_seconds > 0:
+            carry_until = min(
+                end,
+                deduped[-1].ts + timedelta(seconds=carry_forward_seconds),
+            )
+        if carry_until > deduped[-1].ts:
+            deduped.append(PowerSample(ts=carry_until, value=deduped[-1].value))
 
     return deduped
 
 
-def _integrate_window_energy(samples: list[PowerSample]) -> float:
-    intervals = EnergyCalculationService.integrate_intervals(samples)
+def _integrate_window_energy(
+    samples: list[PowerSample],
+    *,
+    max_interval_seconds: float | None = None,
+) -> float:
+    intervals = EnergyCalculationService.integrate_intervals(
+        samples,
+        max_interval_seconds=max_interval_seconds,
+    )
     return float(sum(interval.energy for interval in intervals))
+
+
+def _iter_effective_power_intervals(
+    *,
+    samples: list[PowerSample],
+    max_interval_seconds: float | None = None,
+):
+    for left, right in zip(samples, samples[1:]):
+        interval_end = right.ts
+        if max_interval_seconds is not None and max_interval_seconds > 0:
+            capped_end = left.ts + timedelta(seconds=max_interval_seconds)
+            if capped_end < interval_end:
+                interval_end = capped_end
+        if interval_end <= left.ts:
+            continue
+        yield left.ts, interval_end, left.value
+
+
+def _resolve_sample_hold_seconds(expected_interval_sec: int | None) -> float | None:
+    if expected_interval_sec is None or expected_interval_sec <= 0:
+        return None
+    return float(min(max(expected_interval_sec * 5, 300), 900))
+
+
+def _is_sample_fresh_for_boundary(
+    *,
+    sample_ts: datetime,
+    boundary_ts: datetime,
+    carry_forward_seconds: float | None,
+) -> bool:
+    if carry_forward_seconds is None or carry_forward_seconds <= 0:
+        return True
+    return (boundary_ts - sample_ts).total_seconds() <= carry_forward_seconds
 
 
 def _list_devices_for_power_provider(
@@ -788,6 +1098,30 @@ def _convert_kwh_to_energy_unit(*, value_kwh: float, energy_unit: str) -> float:
     if energy_unit == "Wh":
         return value_kwh * 1000.0
     return value_kwh
+
+
+def _convert_market_price_to_energy_unit(
+    *,
+    price: float,
+    price_unit: str | None,
+    energy_unit: str | None,
+) -> float | None:
+    if not price_unit or not energy_unit:
+        return None
+
+    normalized_price_unit = price_unit.strip().lower()
+    normalized_energy_unit = energy_unit.strip().lower()
+
+    if normalized_price_unit == "mwh":
+        if normalized_energy_unit == "kwh":
+            return round(price / 1000.0, 6)
+        if normalized_energy_unit == "wh":
+            return round(price / 1_000_000.0, 9)
+
+    if normalized_price_unit == normalized_energy_unit:
+        return round(price, 6)
+
+    return None
 
 
 def _empty_day(day_key: str) -> DayEnergyOut:

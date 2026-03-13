@@ -172,7 +172,7 @@ def test_provider_telemetry_returns_day_and_synthetic_metrics(monkeypatch):
         power_source=ProviderPowerSource.METER,
         value_min=-5000.0,
         value_max=10000.0,
-        default_expected_interval_sec=10,
+        default_expected_interval_sec=None,
         has_power_meter=True,
         has_energy_storage=True,
         enabled=True,
@@ -256,8 +256,88 @@ def test_provider_telemetry_returns_day_and_synthetic_metrics(monkeypatch):
         def get_metric_definition(self, *, provider_id, metric_key):
             return None
 
+        def get_last_power_sample_before(self, *, provider_id, before):
+            assert provider_id == provider.id
+            return None
+
+    class FakeMarketPriceRepo:
+        def __init__(self, db):
+            self.db = db
+
+        def get_active_at(self, *, market, timestamp):
+            return None
+
+        def get_latest_before(self, *, market, timestamp):
+            if market == "RCE":
+                return SimpleNamespace(
+                    market="RCE",
+                    interval_start=datetime(2026, 3, 10, 11, 0, tzinfo=timezone.utc),
+                    interval_end=datetime(2026, 3, 10, 11, 15, tzinfo=timezone.utc),
+                    price_value=450.0,
+                    currency="PLN",
+                    price_unit="MWh",
+                    source_updated_at=datetime(2026, 3, 9, 13, 44, tzinfo=timezone.utc),
+                )
+
+            if market == "RCE_FCST":
+                return SimpleNamespace(
+                    market="RCE_FCST",
+                    interval_start=datetime(2026, 3, 10, 11, 0, tzinfo=timezone.utc),
+                    interval_end=datetime(2026, 3, 10, 11, 15, tzinfo=timezone.utc),
+                    price_value=520.0,
+                    currency="PLN",
+                    price_unit="MWh",
+                    source_updated_at=datetime(2026, 3, 10, 10, 55, tzinfo=timezone.utc),
+                )
+
+            return None
+
+        def list_between(self, *, market, date_start, date_end):
+            if market == "RCE":
+                return [
+                    SimpleNamespace(
+                        market="RCE",
+                        interval_start=datetime(2026, 3, 10, 10, 0, tzinfo=timezone.utc),
+                        interval_end=datetime(2026, 3, 10, 10, 15, tzinfo=timezone.utc),
+                        price_value=400.0,
+                        currency="PLN",
+                        price_unit="MWh",
+                    ),
+                    SimpleNamespace(
+                        market="RCE",
+                        interval_start=datetime(2026, 3, 10, 11, 0, tzinfo=timezone.utc),
+                        interval_end=datetime(2026, 3, 10, 11, 15, tzinfo=timezone.utc),
+                        price_value=450.0,
+                        currency="PLN",
+                        price_unit="MWh",
+                    ),
+                ]
+
+            if market == "RCE_FCST":
+                return [
+                    SimpleNamespace(
+                        market="RCE_FCST",
+                        interval_start=datetime(2026, 3, 10, 10, 0, tzinfo=timezone.utc),
+                        interval_end=datetime(2026, 3, 10, 10, 15, tzinfo=timezone.utc),
+                        price_value=410.0,
+                        currency="PLN",
+                        price_unit="MWh",
+                    ),
+                    SimpleNamespace(
+                        market="RCE_FCST",
+                        interval_start=datetime(2026, 3, 10, 11, 0, tzinfo=timezone.utc),
+                        interval_end=datetime(2026, 3, 10, 11, 15, tzinfo=timezone.utc),
+                        price_value=520.0,
+                        currency="PLN",
+                        price_unit="MWh",
+                    ),
+                ]
+
+            return []
+
     monkeypatch.setattr(routes, "ProviderRepository", FakeProviderRepo)
     monkeypatch.setattr(routes, "MeasurementRepository", FakeMeasurementRepo)
+    monkeypatch.setattr(routes, "MarketEnergyPriceRepository", FakeMarketPriceRepo)
 
     result = routes.get_provider_telemetry(
         provider_uuid=provider_uuid,
@@ -280,4 +360,232 @@ def test_provider_telemetry_returns_day_and_synthetic_metrics(monkeypatch):
     assert [(point.hour.hour, point.value) for point in metrics["grid_power"].hours] == [
         (10, 100.0),
         (11, 200.0),
+    ]
+    assert result.settlement_price is not None
+    assert result.settlement_price.market == "RCE"
+    assert result.settlement_price.price == 450.0
+    assert result.settlement_price.price_per_energy_unit == 0.00045
+    assert result.settlement_price.energy_unit == "Wh"
+    assert len(result.settlement_price.history) == 2
+    assert result.forecast_price is not None
+    assert result.forecast_price.market == "RCE_FCST"
+    assert result.forecast_price.price == 520.0
+    assert result.forecast_price.price_per_energy_unit == 0.00052
+    assert len(result.forecast_price.history) == 2
+    assert result.matched_revenue is not None
+    assert result.matched_revenue.market == "RCE"
+    assert result.matched_revenue.total_export_energy == 75.0
+    assert result.matched_revenue.total_revenue == 0.0325
+    assert result.matched_revenue.matched_intervals == 2
+
+
+def test_provider_telemetry_splits_energy_across_hour_boundaries(monkeypatch):
+    provider_uuid = uuid4()
+    provider = SimpleNamespace(
+        id=10,
+        uuid=provider_uuid,
+        name="Boundary test",
+        provider_type=ProviderType.API,
+        kind=ProviderKind.POWER,
+        vendor=ProviderVendor.GOODWE,
+        external_id="station-2",
+        unit=PowerUnit.WATT,
+        power_source=ProviderPowerSource.METER,
+        value_min=-5000.0,
+        value_max=10000.0,
+        default_expected_interval_sec=None,
+        has_power_meter=True,
+        has_energy_storage=False,
+        enabled=True,
+        config={},
+        telemetry_metrics=[],
+        created_at=datetime(2026, 3, 1, tzinfo=timezone.utc),
+        updated_at=datetime(2026, 3, 10, tzinfo=timezone.utc),
+        last_value=None,
+        user_id=6,
+    )
+    current_user = SimpleNamespace(id=6)
+
+    class FakeProviderRepo:
+        def __init__(self, db):
+            self.db = db
+
+        def get_for_user_by_uuid(self, *, provider_uuid, user_id):
+            assert user_id == current_user.id
+            return provider if provider_uuid == provider.uuid else None
+
+    class FakeMeasurementRepo:
+        def __init__(self, db):
+            self.db = db
+
+        def list_power_samples(self, *, provider_id, date_start, date_end):
+            assert provider_id == provider.id
+            return [
+                (datetime(2026, 3, 10, 10, 30, tzinfo=timezone.utc), 120.0),
+                (datetime(2026, 3, 10, 11, 30, tzinfo=timezone.utc), 0.0),
+            ]
+
+        def list_measurements(self, *, provider_id, date_start, date_end):
+            assert provider_id == provider.id
+            return []
+
+        def list_metric_definitions(self, *, provider_id):
+            assert provider_id == provider.id
+            return []
+
+        def list_metric_samples(self, *, provider_id, metric_key, date_start, date_end):
+            return []
+
+        def get_metric_definition(self, *, provider_id, metric_key):
+            return None
+
+        def get_last_power_sample_before(self, *, provider_id, before):
+            assert provider_id == provider.id
+            return None
+
+    class FakeMarketPriceRepo:
+        def __init__(self, db):
+            self.db = db
+
+        def get_active_at(self, *, market, timestamp):
+            return None
+
+        def get_latest_before(self, *, market, timestamp):
+            return None
+
+        def list_between(self, *, market, date_start, date_end):
+            if market == "RCE_FCST":
+                return []
+            return [
+                SimpleNamespace(
+                    market="RCE",
+                    interval_start=datetime(2026, 3, 10, 10, 30, tzinfo=timezone.utc),
+                    interval_end=datetime(2026, 3, 10, 11, 0, tzinfo=timezone.utc),
+                    price_value=500.0,
+                    currency="PLN",
+                    price_unit="MWh",
+                ),
+                SimpleNamespace(
+                    market="RCE",
+                    interval_start=datetime(2026, 3, 10, 11, 0, tzinfo=timezone.utc),
+                    interval_end=datetime(2026, 3, 10, 11, 30, tzinfo=timezone.utc),
+                    price_value=200.0,
+                    currency="PLN",
+                    price_unit="MWh",
+                ),
+            ]
+
+    monkeypatch.setattr(routes, "ProviderRepository", FakeProviderRepo)
+    monkeypatch.setattr(routes, "MeasurementRepository", FakeMeasurementRepo)
+    monkeypatch.setattr(routes, "MarketEnergyPriceRepository", FakeMarketPriceRepo)
+
+    result = routes.get_provider_telemetry(
+        provider_uuid=provider_uuid,
+        selected_date=date(2026, 3, 10),
+        db=object(),
+        current_user=current_user,
+    )
+
+    assert [(point.hour.hour, point.energy) for point in result.day.hours] == [
+        (10, 60.0),
+        (11, 60.0),
+    ]
+    assert result.day.export_energy == 120.0
+    assert result.matched_revenue is not None
+    assert result.matched_revenue.total_export_energy == 120.0
+    assert result.matched_revenue.total_revenue == 0.042
+    assert [(point.hour.hour, point.revenue) for point in result.day.hours] == [
+        (10, 0.03),
+        (11, 0.012),
+    ]
+
+
+def test_provider_telemetry_does_not_carry_stale_value_across_night(monkeypatch):
+    provider_uuid = uuid4()
+    provider = SimpleNamespace(
+        id=11,
+        uuid=provider_uuid,
+        name="Night gap",
+        provider_type=ProviderType.API,
+        kind=ProviderKind.POWER,
+        vendor=ProviderVendor.HUAWEI,
+        external_id="station-3",
+        unit=PowerUnit.KILOWATT,
+        power_source=ProviderPowerSource.INVERTER,
+        value_min=0.0,
+        value_max=10.0,
+        default_expected_interval_sec=180,
+        has_power_meter=False,
+        has_energy_storage=False,
+        enabled=True,
+        config={},
+        telemetry_metrics=[],
+        created_at=datetime(2026, 3, 1, tzinfo=timezone.utc),
+        updated_at=datetime(2026, 3, 10, tzinfo=timezone.utc),
+        last_value=None,
+        user_id=7,
+    )
+    current_user = SimpleNamespace(id=7)
+
+    class FakeProviderRepo:
+        def __init__(self, db):
+            self.db = db
+
+        def get_for_user_by_uuid(self, *, provider_uuid, user_id):
+            assert user_id == current_user.id
+            return provider if provider_uuid == provider.uuid else None
+
+    class FakeMeasurementRepo:
+        def __init__(self, db):
+            self.db = db
+
+        def list_power_samples(self, *, provider_id, date_start, date_end):
+            assert provider_id == provider.id
+            return [
+                (datetime(2026, 3, 13, 6, 36, tzinfo=timezone.utc), 1.5),
+                (datetime(2026, 3, 13, 6, 39, tzinfo=timezone.utc), 1.5),
+            ]
+
+        def list_measurements(self, *, provider_id, date_start, date_end):
+            return []
+
+        def list_metric_definitions(self, *, provider_id):
+            return []
+
+        def list_metric_samples(self, *, provider_id, metric_key, date_start, date_end):
+            return []
+
+        def get_metric_definition(self, *, provider_id, metric_key):
+            return None
+
+        def get_last_power_sample_before(self, *, provider_id, before):
+            assert provider_id == provider.id
+            return (datetime(2026, 3, 12, 23, 57, tzinfo=timezone.utc), 0.16)
+
+    class FakeMarketPriceRepo:
+        def __init__(self, db):
+            self.db = db
+
+        def get_active_at(self, *, market, timestamp):
+            return None
+
+        def get_latest_before(self, *, market, timestamp):
+            return None
+
+        def list_between(self, *, market, date_start, date_end):
+            return []
+
+    monkeypatch.setattr(routes, "ProviderRepository", FakeProviderRepo)
+    monkeypatch.setattr(routes, "MeasurementRepository", FakeMeasurementRepo)
+    monkeypatch.setattr(routes, "MarketEnergyPriceRepository", FakeMarketPriceRepo)
+
+    result = routes.get_provider_telemetry(
+        provider_uuid=provider_uuid,
+        selected_date=date(2026, 3, 13),
+        db=object(),
+        current_user=current_user,
+    )
+
+    assert [(point.hour.hour, point.energy) for point in result.day.hours] == [
+        (6, 0.45),
     ]
